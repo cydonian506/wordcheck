@@ -14,7 +14,7 @@
   このページには単語も氏名も入っていない。紙ごとの単語は暗号化して d/<シートID>.txt に置き、鍵は URL の # の後ろ。
 -->
 <style>
-:root{--bg:#0b0a14;--ink:#f4f3ff;--sub:#a3a0c2;--ok:#27e39a;--ng:#ff3d71;--a1:#ff4fd8;--a2:#ffb400;--a3:#5b8cff}
+:root{--tc:#2ee6c5;--bg:#0b0a14;--ink:#f4f3ff;--sub:#a3a0c2;--ok:#27e39a;--ng:#ff3d71;--a1:#ff4fd8;--a2:#ffb400;--a3:#5b8cff}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{height:100%}
 body{margin:0;font-family:-apple-system,"Hiragino Sans","Hiragino Kaku Gothic ProN",sans-serif;color:var(--ink);
@@ -37,11 +37,38 @@ header{padding:calc(14px + env(safe-area-inset-top)) 18px 8px}
 #msg{display:none;text-align:center;font-size:18px;font-weight:700;padding:80px 24px;color:var(--sub)}
 
 #swipe{display:none;flex-direction:column;align-items:center;padding:6px 18px 24px}
-#combo{height:38px;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:900;
- font-style:italic;letter-spacing:.04em;background:linear-gradient(90deg,var(--a2),var(--a1));
- -webkit-background-clip:text;background-clip:text;color:transparent;opacity:0}
-#combo.pop{animation:pop .5s cubic-bezier(.2,1.6,.4,1)}
-@keyframes pop{0%{transform:scale(.4);opacity:0}50%{transform:scale(1.25);opacity:1}100%{transform:scale(1);opacity:1}}
+/* ストリーク（本人希望 2026-09-15：ヴァロっぽく。キル表示・段階・画面の光・途切れ） */
+.hud{width:100%;max-width:380px;display:flex;align-items:center;justify-content:space-between;height:22px}
+.ticks{display:flex;gap:5px}
+.tick{width:24px;height:10px;background:rgba(255,255,255,.12);clip-path:polygon(28% 0,100% 0,72% 100%,0 100%);transition:background .2s}
+.tick.on{background:var(--tc);box-shadow:0 0 10px var(--tc)}
+#streakNum{font-size:13px;font-weight:900;font-style:italic;letter-spacing:.14em;color:var(--tc)}
+#banner{position:relative;width:100%;max-width:380px;height:70px;display:flex;align-items:center;justify-content:center;
+ pointer-events:none;opacity:0}
+#banner .slab{position:absolute;left:6%;right:6%;top:8px;bottom:14px;background:var(--bc,#ff4655);
+ clip-path:polygon(5% 0,100% 0,95% 100%,0 100%)}
+#banner .slab:after{content:"";position:absolute;left:0;right:0;top:0;height:3px;background:rgba(255,255,255,.7)}
+#banner .txt{position:relative;margin-top:-6px;font-size:28px;font-weight:900;font-style:italic;letter-spacing:.1em;
+ color:#fff;text-shadow:0 2px 0 rgba(0,0,0,.35);white-space:nowrap}
+#banner .sub{position:absolute;bottom:0;font-size:11px;font-weight:900;letter-spacing:.35em;color:var(--bc,#ff4655)}
+#banner.show{animation:slam .6s cubic-bezier(.2,1.4,.3,1) forwards}
+@keyframes slam{0%{transform:scale(2.6) skewX(-14deg);opacity:0}35%{transform:scale(.9) skewX(-8deg);opacity:1}
+ 55%{transform:scale(1.06) skewX(-8deg)}100%{transform:scale(1) skewX(-8deg);opacity:1}}
+#banner.out{transition:opacity .35s,transform .35s;opacity:0!important;transform:scale(.9) skewX(-8deg)}
+#flash{position:fixed;inset:0;pointer-events:none;z-index:8;opacity:0;box-shadow:inset 0 0 140px 40px var(--tc)}
+#flash.go{animation:flash .7s ease-out}
+@keyframes flash{0%{opacity:1}100%{opacity:0}}
+#aura{position:fixed;left:-20%;right:-20%;bottom:-30%;height:70%;pointer-events:none;z-index:-1;opacity:0;
+ background:radial-gradient(50% 50% at 50% 60%,var(--tc),transparent 70%);transition:opacity .5s;animation:breathe 1.6s ease-in-out infinite}
+@keyframes breathe{50%{transform:scale(1.08)}}
+body[data-lv="1"] #aura{opacity:.18}body[data-lv="2"] #aura{opacity:.3}
+body[data-lv="3"] #aura{opacity:.45}body[data-lv="4"] #aura{opacity:.6}
+.card.shake{animation:shake .4s}
+@keyframes shake{20%{transform:translateX(-10px) rotate(-2deg)}40%{transform:translateX(9px) rotate(2deg)}
+ 60%{transform:translateX(-6px)}80%{transform:translateX(4px)}}
+#best{margin-top:8px;display:inline-block;font-size:12px;font-weight:900;font-style:italic;letter-spacing:.1em;color:#fff;
+ padding:4px 14px;background:var(--bc,#ff4655);clip-path:polygon(6% 0,100% 0,94% 100%,0 100%);white-space:nowrap}
+#best small{font-size:10px;letter-spacing:.08em;opacity:.9;margin-left:6px}
 #stage{position:relative;width:100%;max-width:380px;height:min(58vh,400px)}
 .card{position:absolute;inset:0;border-radius:30px;background:#fff;color:#12101f;
  box-shadow:0 30px 60px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.08);
@@ -104,7 +131,7 @@ canvas#fx{position:fixed;inset:0;pointer-events:none;z-index:9}
 </style>
 </head>
 <body>
-<canvas id="fx"></canvas>
+<canvas id="fx"></canvas><div id="flash"></div><div id="aura"></div>
 <header>
  <div class="top"><div id="title">単語チェック</div><div id="count"></div></div>
  <div class="bar"><div id="fill"></div></div>
@@ -112,7 +139,8 @@ canvas#fx{position:fixed;inset:0;pointer-events:none;z-index:9}
 <div id="msg">読み込み中…</div>
 
 <div id="swipe">
- <div id="combo"></div>
+ <div class="hud"><div class="ticks"><i class="tick"></i><i class="tick"></i><i class="tick"></i><i class="tick"></i><i class="tick"></i></div><div id="streakNum"></div></div>
+ <div id="banner"><div class="slab"></div><div class="txt"></div><div class="sub"></div></div>
  <div id="stage"></div>
  <div class="hint"><span>← ミス</span><span>覚えてた →</span></div>
  <div class="btns">
@@ -125,7 +153,7 @@ canvas#fx{position:fixed;inset:0;pointer-events:none;z-index:9}
 <div id="review">
  <div class="result">
   <div class="ring" id="ring"><div><div><div id="score">0</div><div id="outof"></div></div></div></div>
-  <div><div id="rank"></div><div id="rankSub"></div></div>
+  <div><div id="rank"></div><div id="rankSub"></div><div id="best"></div></div>
  </div>
  <p class="lead">ミスした語は赤。タップで直せる</p>
  <div id="list"></div>
@@ -155,10 +183,37 @@ function progress() {
   $("fill").style.width = (i / n * 100) + "%";
 }
 function streak() { var k = 0; for (var j = i - 1; j >= 0 && res[j] === false; j--) k++; return k; }
-function comboShow() {
-  var k = streak(), c = $("combo");
-  if (k >= 3) { c.textContent = "COMBO ×" + k; c.classList.remove("pop"); void c.offsetWidth; c.classList.add("pop"); c.style.opacity = 1; }
-  else c.style.opacity = 0;
+// 連続「覚えてた」の段階（数, 表示, 色）
+var TIERS = [[50, "FLAWLESS", "#ffd166"], [40, "LEGENDARY", "#ffd166"], [30, "GODLIKE", "#c77dff"],
+  [20, "UNSTOPPABLE", "#ff4655"], [15, "ON FIRE", "#ff7a1a"], [10, "CLUTCH", "#ffd166"], [5, "ACE", "#ff4655"],
+  [4, "QUADRA KILL", "#ff7a1a"], [3, "TRIPLE KILL", "#ffd166"], [2, "DOUBLE KILL", "#2ee6c5"]];
+function tierOf(k) { for (var t = 0; t < TIERS.length; t++) if (k >= TIERS[t][0]) return TIERS[t]; return null; }
+var bannerTimer = null;
+function banner(text, sub, color) {
+  var b = $("banner");
+  b.style.setProperty("--bc", color); b.querySelector(".txt").textContent = text; b.querySelector(".sub").textContent = sub;
+  b.classList.remove("show", "out"); void b.offsetWidth; b.classList.add("show");
+  clearTimeout(bannerTimer); bannerTimer = setTimeout(function () { b.classList.add("out"); }, 1100);
+}
+function flash() { var f = $("flash"); f.classList.remove("go"); void f.offsetWidth; f.classList.add("go"); }
+// ストリークの表示を今の状態に合わせる。prev は直前のストリーク（途切れた演出に使う）
+function streakFx(prev, animate) {
+  var k = streak(), t = tierOf(k), color = t ? t[2] : "#2ee6c5";
+  document.documentElement.style.setProperty("--tc", color);
+  var fill = k === 0 ? 0 : (k % 5 || 5);
+  [].forEach.call(document.querySelectorAll(".tick"), function (x, n) { x.classList.toggle("on", n < fill); });
+  $("streakNum").textContent = k >= 2 ? "STREAK " + k : "";
+  document.body.dataset.lv = k >= 20 ? 4 : k >= 10 ? 3 : k >= 5 ? 2 : k >= 3 ? 1 : 0;
+  if (!animate) return;
+  var exact = TIERS.filter(function (x) { return x[0] === k; })[0];
+  if (exact) {
+    banner(exact[1], k + " STREAK", exact[2]); flash(); buzz(k >= 5 ? [25, 40, 25, 40, 60] : [20, 30, 30]);
+    if (k >= 10) confetti(k >= 30 ? 160 : 70);
+  } else if (k > 5 && k % 5 === 0) {
+    banner("×" + k, "STREAK", color); flash();
+  } else if (k === 0 && prev >= 3) {
+    banner("STREAK LOST", prev + " STREAK", "#6f6d86");
+  }
 }
 function render() {
   var stage = $("stage"); stage.innerHTML = "";
@@ -194,15 +249,19 @@ function tint(card, r) {
   card.querySelector(".mok").style.opacity = r > 0 ? a * .95 : 0;
 }
 function decide(miss, dir) {
-  if (busy || i >= D.words.length) return; busy = true; res[i] = miss;
+  if (busy || i >= D.words.length) return; busy = true;
+  var prev = streak(); res[i] = miss;
   buzz(miss ? [18, 40, 18] : 12);
   var card = $("stage").firstChild; tint(card, dir); card.style.transition = "transform .32s cubic-bezier(.4,0,.2,1)";
   card.style.transform = "translateX(" + (dir * 520) + "px) rotate(" + (dir * 32) + "deg)";
-  setTimeout(function () { busy = false; i++; comboShow(); render(); }, 220);
+  setTimeout(function () {
+    busy = false; i++; render(); streakFx(prev, true);
+    if (miss && prev >= 3) { var c = $("stage").firstChild; if (c) { c.classList.remove("enter"); c.classList.add("shake"); } }
+  }, 220);
 }
 $("bng").onclick = function () { decide(true, -1); };
 $("bok").onclick = function () { decide(false, 1); };
-$("bundo").onclick = function () { if (i > 0 && !busy) { i--; res.length = i; comboShow(); render(); } };
+$("bundo").onclick = function () { if (i > 0 && !busy) { i--; res.length = i; render(); streakFx(0, false); } };
 
 // ---------------------------------------------------------------- 結果
 function label() {
@@ -227,7 +286,13 @@ function countUp(to, n) {
   requestAnimationFrame(step);
 }
 function finish() {
-  screen("review"); $("combo").style.opacity = 0; $("count").textContent = "結果";
+  screen("review"); $("count").textContent = "結果"; document.body.dataset.lv = 0;
+  var run = 0, best = 0;
+  res.forEach(function (x) { run = x === false ? run + 1 : 0; best = Math.max(best, run); });
+  var bt = tierOf(best);
+  $("best").textContent = "BEST " + best;
+  if (bt) $("best").appendChild(el("small", "", bt[1]));
+  $("best").style.setProperty("--bc", bt ? bt[2] : "#6f6d86");
   $("fill").style.width = "100%";
   var n = D.words.length, ok = res.filter(function (x) { return x === false; }).length, p = ok / n * 100;
   var r = rankOf(p); $("rank").textContent = r[0]; $("rankSub").textContent = r[1]; $("outof").textContent = "/ " + n;
