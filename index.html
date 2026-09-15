@@ -67,6 +67,11 @@ header{padding:calc(14px + env(safe-area-inset-top)) 18px 6px}
 .review .k{font-size:12px;font-weight:900;letter-spacing:.14em;opacity:.9}
 .review .v{font-size:26px;font-weight:900;margin-top:2px}
 .review .s{font-size:12px;font-weight:700;opacity:.85;margin-top:2px}
+/* 復習は単語帳ごと（英・古文を混ぜない。本人希望 2026-09-16） */
+#reviews{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+#reviews .review{margin:0;padding:14px}
+#reviews .review .k{font-size:11px;letter-spacing:.06em}
+#reviews .review .v{font-size:22px}
 .review.none{background:rgba(255,255,255,.06);box-shadow:none;color:var(--sub)}
 .review.none:after{display:none}
 .day{border-radius:20px;padding:14px;margin-bottom:12px;background:rgba(255,255,255,.06);border:1.5px solid rgba(255,255,255,.08)}
@@ -206,7 +211,7 @@ canvas#fx{position:fixed;inset:0;pointer-events:none;z-index:9}
 <div id="hub">
  <div class="hubHead"><div class="big" id="hubBig"></div><div class="small" id="hubSmall"></div></div>
  <div class="stats"><div class="stat"><div class="k">TOTAL <span class="unit">XP</span></div><div class="v" id="stXp">0</div></div><div class="stat"><div class="k">BEST STREAK</div><div class="v" id="stBest">0</div></div><div class="stat"><div class="k">覚えた語</div><div class="v" id="stLearn">0</div></div></div>
- <button class="review" id="reviewBtn"><div class="k">REVIEW ・ FSRS</div><div class="v" id="reviewV"></div><div class="s" id="reviewS"></div></button>
+ <div id="reviews"></div>
  <div id="days"></div>
 </div>
 
@@ -244,7 +249,7 @@ var KEY = new URLSearchParams(location.hash.slice(1)).get("k") || "";
 var PERIOD = SID.charAt(6) === "p";
 var ME = SID.slice(0, 6);                // 生徒コード（端末に残す FSRS・XP のまとまり）
 var WD = "日月火水木金土", REVIEW_MAX = 50;
-var P = null, S = null, busy = false, INDEX = {};
+var P = null, S = null, busy = false, INDEX = {}, BOOK = {};   // BOOK：行番号 → "e"（英）/ "k"（古文）
 var $ = function (id) { return document.getElementById(id); };
 function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
 function screen(id) {
@@ -300,11 +305,11 @@ function fsrsRate(row, ok) {
   return [row, cur || null];                             // 戻すときのために前の状態を返す
 }
 function fsrsUndo(prev) { if (!prev) return; var all = fsrsAll(); if (prev[1]) all[prev[0]] = prev[1]; else delete all[prev[0]]; store(fsrsKey(), all); }
-function dueCards() {
+function dueCards(b) {
   var all = fsrsAll(), today = todayIso(), out = [];
   Object.keys(all).forEach(function (row) {
     var st = all[row], e = INDEX[row];
-    if (!e || st[2] === today) return;
+    if (!e || BOOK[row] !== b || st[2] === today) return;
     var t = days(st[2], today);
     if (t >= Math.max(1, Math.round(st[0]))) out.push([retr(t, st[0]), e]);
   });
@@ -321,11 +326,16 @@ function hub() {
   $("hubBig").textContent = md(P.test) + " テストまで";
   $("hubSmall").textContent = "毎日1日分＋復習。先の日もできる。何周してもOK";
   var pf = profile(); $("stXp").textContent = pf.xp.toLocaleString(); $("stBest").textContent = pf.best; $("stLearn").textContent = learnedCount();
-  var due = dueCards(), rb = $("reviewBtn");
-  rb.classList.toggle("none", !due.length);
-  $("reviewV").textContent = due.length ? "復習 " + due.length + " 語" : "今日の復習はクリア";
-  $("reviewS").textContent = due.length ? "忘れかけの語から。XP 1.5倍" : "明日また忘れかけの語が出てくる";
-  rb.onclick = due.length ? function () { startReview(); } : null;   // クリックのイベントを語の一覧と取り違えないように包む
+  var rv = $("reviews"), anyDue = false; rv.innerHTML = "";
+  P.days[0].books.forEach(function (bk) {
+    var due = dueCards(bk.b), rb = el("button", "review" + (due.length ? "" : " none"));
+    anyDue = anyDue || due.length > 0;
+    rb.appendChild(el("div", "k", "復習 ・ " + (bk.b === "k" ? "古文" : "英単語")));
+    rb.appendChild(el("div", "v", due.length ? due.length + " 語" : "クリア"));
+    rb.appendChild(el("div", "s", due.length ? "忘れかけ順。XP 1.5倍" : "明日また出てくる"));
+    if (due.length) rb.onclick = function () { startReview(bk.b); };   // クリックのイベントを語の一覧と取り違えないように包む
+    rv.appendChild(rb);
+  });
   var box = $("days"); box.innerHTML = ""; var today = todayIso(), scrollTo = null;
   P.days.forEach(function (day, di) {
     var card = el("div", "day" + (day.date === today ? " today" : "")), top = el("div", "dayTop");
@@ -343,14 +353,14 @@ function hub() {
     });
     card.appendChild(books); box.appendChild(card);
   });
-  if (scrollTo && !due.length) setTimeout(function () { scrollTo.scrollIntoView({ block: "center" }); }, 50);
+  if (scrollTo && !anyDue) setTimeout(function () { scrollTo.scrollIntoView({ block: "center" }); }, 50);
 }
 $("back").onclick = function () { commit(); hub(); };
 
 // ================================================================ セッション
 function shuffle(a) { for (var j = a.length - 1; j > 0; j--) { var r = Math.floor(Math.random() * (j + 1)), t = a[j]; a[j] = a[r]; a[r] = t; } return a; }
 function begin(o) {
-  S = { kind: o.kind, di: o.di, bi: o.bi, mode: o.mode, round: o.round, deck: o.deck, idx: o.idx, i: 0, res: [], times: [], fs: [], undo: 0,
+  S = { kind: o.kind, book: o.book, di: o.di, bi: o.bi, mode: o.mode, round: o.round, deck: o.deck, idx: o.idx, i: 0, res: [], times: [], fs: [], undo: 0,
         started: Date.now(), id: rid(), sent: false, shownAt: 0, flipAt: 0, flipped: false, xp: 0, gains: [], bestRun: 0 };
   $("title").textContent = o.title; $("xp").textContent = "0"; $("mult").textContent = "";
   screen("swipe"); streakFx(0, false); render();
@@ -362,10 +372,11 @@ function start(di, bi, mode, only) {
   begin({ kind: "day", di: di, bi: bi, mode: mode, round: round, deck: bk.words, idx: idx,
     title: (P.days.length > 1 ? (di + 1) + "日目 " : "") + bk.label + (mode === "miss" ? "　ミスだけ" : "") + "　" + round + "周目" });
 }
-function startReview(only, round) {
-  var deck = only ? only : dueCards();
+function startReview(b, only, round) {
+  var deck = only ? only : dueCards(b);
   if (!deck.length) return;
-  begin({ kind: "fsrs", mode: "fsrs", round: round || 1, deck: deck, idx: deck.map(function (w, k) { return k; }), title: "復習（FSRS）" + (round > 1 ? "　" + round + "周目" : "") });
+  var label = (P.days[0].books.filter(function (x) { return x.b === b; })[0] || {}).label || "";
+  begin({ kind: "fsrs", book: b, mode: "fsrs", round: round || 1, deck: deck, idx: deck.map(function (w, k) { return k; }), title: "復習 " + label + (round > 1 ? "　" + round + "周目" : "") });
 }
 function word() { return S.deck[S.idx[S.i]]; }
 function counts() { var ok = 0, ng = 0; for (var j = 0; j < S.i; j++) { if (S.res[j]) ng++; else ok++; } return [ok, ng]; }
@@ -566,11 +577,11 @@ function finish() {
 function refreshAgain() { var m = missIdx(); $("againMiss").style.display = PERIOD && m.length ? "block" : "none"; $("againMiss").textContent = "ミスだけもう一周（" + m.length + "語）"; }
 $("againMiss").onclick = function () {
   var m = missIdx(), s = S; commit();
-  if (s.kind === "fsrs") startReview(m.map(function (wi) { return s.deck[wi]; }), s.round + 1); else start(s.di, s.bi, "miss", m);
+  if (s.kind === "fsrs") startReview(s.book, m.map(function (wi) { return s.deck[wi]; }), s.round + 1); else start(s.di, s.bi, "miss", m);
 };
 $("againAll").onclick = function () {
   var s = S; commit();
-  if (s.kind === "fsrs") startReview(s.deck, s.round + 1); else start(s.di, s.bi, "all");
+  if (s.kind === "fsrs") startReview(s.book, s.deck, s.round + 1); else start(s.di, s.bi, "all");
 };
 $("toHub").onclick = function () { commit(); if (PERIOD) hub(); else show("送信しました。おつかれさま"); };
 
@@ -589,7 +600,7 @@ function commit() {
   S.sent = true;
   var body, items = function (keyOf) { return S.idx.map(function (wi, k) { var w = S.deck[wi]; return [keyOf(w), S.res[k] ? 0 : 1, S.times[k] ? S.times[k][0] : 0, S.times[k] ? S.times[k][1] : 0]; }); };
   if (S.kind === "fsrs") {
-    body = { v: 2, p: SID, id: S.id, day: 0, b: "e", round: S.round, mode: "fsrs", started: S.started, ended: Date.now(), undo: S.undo, items: items(function (w) { return w[5]; }) };
+    body = { v: 2, p: SID, id: S.id, day: 0, b: S.book, round: S.round, mode: "fsrs", started: S.started, ended: Date.now(), undo: S.undo, items: items(function (w) { return w[5]; }) };
   } else if (PERIOD) {
     body = { v: 2, p: SID, id: S.id, day: S.di + 1, b: P.days[S.di].books[S.bi].b, round: S.round, mode: S.mode, started: S.started, ended: Date.now(), undo: S.undo, items: items(function (w) { return w[0]; }) };
   } else {
@@ -623,8 +634,8 @@ if (!/^[0-9a-z]{23}$/.test(SID)) {
       if (PERIOD) {
         P = d;
         // 語の索引（行番号 → [紙の No., 単語, 訳, 品詞, 単語帳の番号, 行番号]）。復習の語は前の期間の語も含む
-        Object.keys(P.cards || {}).forEach(function (row) { var c = P.cards[row]; INDEX[row] = [0, c[1], c[2], c[3], c[4], +row]; });
-        P.days.forEach(function (day) { day.books.forEach(function (bk) { bk.words.forEach(function (w) { if (w[5]) INDEX[w[5]] = w; }); }); });
+        Object.keys(P.cards || {}).forEach(function (row) { var c = P.cards[row]; INDEX[row] = [0, c[1], c[2], c[3], c[4], +row]; BOOK[row] = c[0]; });
+        P.days.forEach(function (day) { day.books.forEach(function (bk) { bk.words.forEach(function (w) { if (w[5]) { INDEX[w[5]] = w; BOOK[w[5]] = bk.b; } }); }); });
         fsrsSeed(); hub(); return;
       }
       P = { days: [{ date: "", books: [{ b: SID.charAt(6), label: d.title, words: d.words }] }] };
