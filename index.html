@@ -86,24 +86,6 @@ header{padding:calc(14px + env(safe-area-inset-top)) 18px 6px}
 /* カード */
 #swipe{display:none;flex-direction:column;align-items:center;padding:4px 18px 24px;position:relative;overflow:hidden;touch-action:none}
 
-/* テーマ（本人希望 2026-09-15：いろんなバージョン）。公式の名前・ロゴ・キャラ・決め台詞は使わず、雰囲気だけ */
-.themes{display:flex;gap:6px;margin:0 0 12px;overflow-x:auto;touch-action:pan-x}
-.themes button{flex:none;border:0;border-radius:99px;padding:7px 14px;font-size:13px;font-weight:900;color:var(--sub);background:rgba(255,255,255,.08)}
-.themes button.on{color:#fff;background:linear-gradient(90deg,var(--a3),var(--a1))}
-:root[data-theme="monster"]{--a1:#ff5c5c;--a2:#ffd23f;--a3:#3d7bff;--bg:#10143a}
-:root[data-theme="baseball"]{--a1:#1fbf6a;--a2:#ffe066;--a3:#2f80ed;--bg:#07140d}
-:root[data-theme="soccer"]{--a1:#00c2ff;--a2:#39ff88;--a3:#7a5cff;--bg:#06101d}
-:root[data-theme="monster"] body:before{background:radial-gradient(40% 35% at 15% 10%,rgba(255,210,63,.3),transparent 70%),radial-gradient(45% 40% at 90% 25%,rgba(61,123,255,.35),transparent 70%),radial-gradient(50% 45% at 50% 100%,rgba(255,92,92,.25),transparent 70%)}
-:root[data-theme="baseball"] body:before{background:radial-gradient(60% 40% at 50% 0%,rgba(255,255,255,.18),transparent 70%),radial-gradient(70% 50% at 50% 100%,rgba(31,191,106,.35),transparent 70%)}
-:root[data-theme="soccer"] body:before{background:radial-gradient(45% 35% at 10% 15%,rgba(0,194,255,.3),transparent 70%),radial-gradient(45% 40% at 90% 30%,rgba(122,92,255,.3),transparent 70%),radial-gradient(60% 45% at 50% 100%,rgba(57,255,136,.25),transparent 70%)}
-:root[data-theme="monster"] #banner .slab{clip-path:none;border-radius:99px;border:4px solid #fff;left:9%;right:9%}
-:root[data-theme="monster"] #banner .txt{font-style:normal;letter-spacing:.02em;color:#1b1b3a;text-shadow:2px 2px 0 #fff}
-:root[data-theme="baseball"] #banner .slab{clip-path:none;border-radius:6px;background:#050505;border:3px solid var(--bc);box-shadow:inset 0 0 0 3px #1c1c1c}
-:root[data-theme="baseball"] #banner .txt{font-style:normal;color:var(--bc);letter-spacing:.14em;font-family:ui-monospace,Menlo,monospace;text-shadow:0 0 10px var(--bc),0 0 2px #fff}
-:root[data-theme="soccer"] #banner .slab{clip-path:polygon(0 0,100% 0,96% 50%,100% 100%,0 100%,4% 50%)}
-:root[data-theme="monster"] #banner.show,:root[data-theme="baseball"] #banner.show{animation:slamFlat .5s cubic-bezier(.2,1.6,.3,1) forwards}
-@keyframes slamFlat{0%{transform:scale(3);opacity:0;filter:blur(6px)}30%{transform:scale(.9);opacity:1;filter:blur(0)}50%{transform:scale(1.07)}100%{transform:scale(1);opacity:1}}
-:root[data-theme="monster"] #banner.out,:root[data-theme="baseball"] #banner.out{transform:scale(1.15)}
 #swipe.quake{animation:quake .38s cubic-bezier(.36,.07,.19,.97)}
 @keyframes quake{10%,90%{transform:translate(-2px,1px)}20%,80%{transform:translate(4px,-2px)}30%,50%,70%{transform:translate(-7px,3px)}40%,60%{transform:translate(7px,-3px)}}
 .hud{width:100%;max-width:380px;display:flex;align-items:center;justify-content:space-between;height:28px;gap:8px}
@@ -125,6 +107,12 @@ header{padding:calc(14px + env(safe-area-inset-top)) 18px 6px}
 #banner.show{animation:slam .5s cubic-bezier(.2,1.6,.3,1) forwards}
 @keyframes slam{0%{transform:scale(3.2) skewX(-16deg);opacity:0;filter:blur(6px)}30%{transform:scale(.88) skewX(-8deg);opacity:1;filter:blur(0)}50%{transform:scale(1.08) skewX(-8deg)}100%{transform:scale(1) skewX(-8deg);opacity:1}}
 #banner.out{transition:opacity .3s,transform .3s;opacity:0!important;transform:scale(1.2) skewX(-8deg)}
+/* 段階の間の正解（6〜9 連続など）：小さいキル帯。次の段階までの残りも出す */
+#banner.mini .slab{left:22%;right:22%;top:10px;bottom:16px}
+#banner.mini .txt{font-size:20px;margin-top:-8px}
+#banner.mini .sub{letter-spacing:.2em}
+#banner.mini.show{animation:slamMini .32s cubic-bezier(.2,1.8,.3,1) forwards}
+@keyframes slamMini{0%{transform:scale(1.9) skewX(-12deg);opacity:0}45%{transform:scale(.94) skewX(-8deg);opacity:1}100%{transform:scale(1) skewX(-8deg);opacity:1}}
 #flash{position:fixed;inset:0;pointer-events:none;z-index:8;opacity:0;box-shadow:inset 0 0 160px 50px var(--tc);background:radial-gradient(circle at 50% 45%,rgba(255,255,255,.35),transparent 55%)}
 #flash.go{animation:flash .55s ease-out}
 @keyframes flash{0%{opacity:1}100%{opacity:0}}
@@ -217,7 +205,6 @@ canvas#fx{position:fixed;inset:0;pointer-events:none;z-index:9}
 
 <div id="hub">
  <div class="hubHead"><div class="big" id="hubBig"></div><div class="small" id="hubSmall"></div></div>
- <div class="themes" id="themes"></div>
  <div class="stats"><div class="stat"><div class="k">TOTAL <span class="unit">XP</span></div><div class="v" id="stXp">0</div></div><div class="stat"><div class="k">BEST STREAK</div><div class="v" id="stBest">0</div></div><div class="stat"><div class="k">覚えた語</div><div class="v" id="stLearn">0</div></div></div>
  <button class="review" id="reviewBtn"><div class="k">REVIEW ・ FSRS</div><div class="v" id="reviewV"></div><div class="s" id="reviewS"></div></button>
  <div id="days"></div>
@@ -471,45 +458,19 @@ function rollXP() {
   requestAnimationFrame(step);
 }
 function streak() { var k = 0; for (var j = S.i - 1; j >= 0 && S.res[j] === false; j--) k++; return k; }
-// テーマごとの呼び名（連続数, 表示, 色）。公式の名前・ロゴ・キャラ・決め台詞は使わない
-var THEMES = {
-  fps: { name: "FPS", unit: "XP", sub: "STREAK", lost: "STREAK LOST",
-    tiers: [[50, "FLAWLESS", "#ffd166"], [40, "LEGENDARY", "#ffd166"], [30, "GODLIKE", "#c77dff"], [20, "UNSTOPPABLE", "#ff4655"], [15, "ON FIRE", "#ff7a1a"],
-      [10, "FEVER", "#ff4fd8"], [5, "ACE", "#ff4655"], [4, "QUADRA KILL", "#ff7a1a"], [3, "TRIPLE KILL", "#ffd166"], [2, "DOUBLE KILL", "#2ee6c5"]],
-    ranks: [["神", "パーフェクト"], ["えぐい", "ほぼ完璧"], ["ナイス", "ミスだけ見直そ"], ["伸びしろ", "ミスをもう一回"], ["ここから", "ミスだけ覚えよ"]] },
-  monster: { name: "モンスター", unit: "EXP", sub: "れんぞく", lost: "にげられた…",
-    tiers: [[50, "パーフェクト", "#ffd23f"], [40, "マスター", "#ffd23f"], [30, "でんせつ級", "#b388ff"], [20, "むてき！", "#ff5c5c"], [15, "かくせい！", "#ff8a3d"],
-      [10, "しんか！", "#3dd6ff"], [5, "レベルアップ！", "#ffd23f"], [4, "クリティカル！", "#ff5c5c"], [3, "こうげきアップ！", "#ff8a3d"], [2, "コンボ！", "#7ee081"]],
-    ranks: [["マスター", "パーフェクト"], ["エリート", "ほぼ完璧"], ["ナイス", "ミスだけ見直そ"], ["しゅぎょう中", "ミスをもう一回"], ["これから", "ミスだけ覚えよ"]] },
-  baseball: { name: "野球", unit: "点", sub: "連続", lost: "ゲッツー…",
-    tiers: [[50, "完全試合", "#ffe066"], [40, "MVP", "#ffe066"], [30, "三冠王", "#ffe066"], [20, "猛打賞", "#ff6b6b"], [15, "サイクル安打", "#ff9f43"],
-      [10, "満塁ホームラン", "#ffe066"], [5, "ホームラン", "#ffe066"], [4, "スリーベース", "#4dd4ac"], [3, "ツーベース", "#4dd4ac"], [2, "ヒット", "#ffffff"]],
-    ranks: [["MVP", "パーフェクト"], ["オールスター", "ほぼ完璧"], ["レギュラー", "ミスだけ見直そ"], ["2軍", "ミスをもう一回"], ["練習生", "ミスだけ覚えよ"]] },
-  soccer: { name: "サッカー", unit: "PT", sub: "連続", lost: "オフサイド…",
-    tiers: [[50, "無敗優勝", "#ffd166"], [40, "レジェンド", "#ffd166"], [30, "世界一", "#ffd166"], [20, "ファンタジスタ", "#ff4fd8"], [15, "ハットトリック", "#ff7a1a"],
-      [10, "ゴラッソ", "#00e5ff"], [5, "ゴール！", "#39ff88"], [4, "シュート", "#ffffff"], [3, "ワンツー", "#9be7ff"], [2, "ナイスパス", "#9be7ff"]],
-    ranks: [["ワールドクラス", "パーフェクト"], ["エース", "ほぼ完璧"], ["スタメン", "ミスだけ見直そ"], ["ベンチ", "ミスをもう一回"], ["ユース", "ミスだけ覚えよ"]] }
-};
-var TH = THEMES.fps, TIERS = TH.tiers;
-function setTheme(id) {
-  if (!THEMES[id]) id = "fps";
-  TH = THEMES[id]; TIERS = TH.tiers;
-  document.documentElement.dataset.theme = id;
-  [].forEach.call(document.querySelectorAll(".unit"), function (u) { u.textContent = TH.unit; });
-  store("theme:" + ME, id);
-  var box = $("themes"); box.innerHTML = "";
-  Object.keys(THEMES).forEach(function (k) {
-    var b = el("button", k === id ? "on" : "", THEMES[k].name);
-    b.onclick = function () { setTheme(k); buzz(8); };
-    box.appendChild(b);
-  });
-}
+// 呼び名（連続数, 表示, 色）。テーマ選択は本人判断で FPS だけに戻した（2026-09-16）
+var TH = { sub: "STREAK", lost: "STREAK LOST",
+  tiers: [[50, "FLAWLESS", "#ffd166"], [40, "LEGENDARY", "#ffd166"], [30, "GODLIKE", "#c77dff"], [20, "UNSTOPPABLE", "#ff4655"], [15, "ON FIRE", "#ff7a1a"],
+    [10, "FEVER", "#ff4fd8"], [5, "ACE", "#ff4655"], [4, "QUADRA KILL", "#ff7a1a"], [3, "TRIPLE KILL", "#ffd166"], [2, "DOUBLE KILL", "#2ee6c5"]],
+  ranks: [["神", "パーフェクト"], ["えぐい", "ほぼ完璧"], ["ナイス", "ミスだけ見直そ"], ["伸びしろ", "ミスをもう一回"], ["ここから", "ミスだけ覚えよ"]] };
+var TIERS = TH.tiers;
+function nextTier(k) { var n = null; TIERS.forEach(function (x) { if (x[0] > k) n = x; }); return n; }
 function tierOf(k) { for (var t = 0; t < TIERS.length; t++) if (k >= TIERS[t][0]) return TIERS[t]; return null; }
 var bannerTimer = null;
-function banner(text, sub, color) {
+function banner(text, sub, color, mini) {
   var b = $("banner"); b.style.setProperty("--bc", color); b.querySelector(".txt").textContent = text; b.querySelector(".sub").textContent = sub;
-  b.classList.remove("show", "out"); void b.offsetWidth; b.classList.add("show");
-  clearTimeout(bannerTimer); bannerTimer = setTimeout(function () { b.classList.add("out"); }, 1000);
+  b.classList.remove("show", "out"); b.classList.toggle("mini", !!mini); void b.offsetWidth; b.classList.add("show");
+  clearTimeout(bannerTimer); bannerTimer = setTimeout(function () { b.classList.add("out"); }, mini ? 700 : 1000);
 }
 function flash() { var f = $("flash"); f.classList.remove("go"); void f.offsetWidth; f.classList.add("go"); }
 function quake() { var s = $("swipe"); s.classList.remove("quake"); void s.offsetWidth; s.classList.add("quake"); }
@@ -547,6 +508,11 @@ function streakFx(prev, animate) {
     banner(exact[1], k + " " + TH.sub + (m > 1 ? "  ×" + m : ""), exact[2]); flash(); burst(exact[2], k >= 10); if (k >= 5) quake();
     buzz(k >= 10 ? [30, 30, 30, 30, 80] : k >= 5 ? [25, 40, 60] : [20, 30]);
   } else if (k > 10 && k % 5 === 0) { banner("×" + k, TH.sub, color); flash(); burst(color, true); quake(); }
+  else if (k > 5) {
+    var nx = nextTier(k);
+    banner(k + " KILLS", nx ? "NEXT " + nx[1] + " " + (nx[0] - k) : TH.sub + (m > 1 ? "  ×" + m : ""), color, true);
+    buzz(15);
+  }
   else if (k === 0 && prev >= 3) banner(TH.lost, prev + " " + TH.sub, "#6f6d86");
 }
 
@@ -659,7 +625,7 @@ if (!/^[0-9a-z]{23}$/.test(SID)) {
         // 語の索引（行番号 → [紙の No., 単語, 訳, 品詞, 単語帳の番号, 行番号]）。復習の語は前の期間の語も含む
         Object.keys(P.cards || {}).forEach(function (row) { var c = P.cards[row]; INDEX[row] = [0, c[1], c[2], c[3], c[4], +row]; });
         P.days.forEach(function (day) { day.books.forEach(function (bk) { bk.words.forEach(function (w) { if (w[5]) INDEX[w[5]] = w; }); }); });
-        setTheme(store("theme:" + ME)); fsrsSeed(); hub(); return;
+        fsrsSeed(); hub(); return;
       }
       P = { days: [{ date: "", books: [{ b: SID.charAt(6), label: d.title, words: d.words }] }] };
       start(0, 0, "all");
