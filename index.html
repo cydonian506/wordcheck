@@ -8,10 +8,12 @@
 <meta name="theme-color" content="#0b0a14">
 <title>単語チェック</title>
 <!--
-  単語チェック：宿題の解答の紙の QR から開く入力ページ。
-  1 語ずつカードで出し、右フリック＝覚えてた、左フリック＝ミス。最後に一覧で直して送る。
-  2026-09-15 本人希望で「ドパガキ向け」の派手なデザインに作り直した（進捗バー・コンボ・結果演出・紙吹雪）。
-  このページには単語も氏名も入っていない。紙ごとの単語は暗号化して d/<シートID>.txt に置き、鍵は URL の # の後ろ。
+  単語チェック
+  - 期間の QR（?s=<期間ID>、7 文字目が p）：宿題そのもの（2026-09-15 に紙からアプリへ切り替え）。
+    日の一覧 → 単語だけ見て答える → タップで裏返して訳 → ○／✕ にフリック → 何周でも（ミスだけも可）。
+    1 回のセッションごとに、何周目か・1 語ごとの結果・裏返すまで／決めるまでの時間を送る。
+  - 紙の QR（?s=<シートID>、7 文字目が e/k）：紙の宿題の答え合わせのあとに誤答を入れる（前からの形）。
+  このページには単語も氏名も入っていない。データは暗号化して d/<ID>.txt に置き、鍵は URL の # の後ろ（サーバーに送られない）。
 -->
 <style>
 :root{--tc:#2ee6c5;--bg:#0b0a14;--ink:#f4f3ff;--sub:#a3a0c2;--ok:#27e39a;--ng:#ff3d71;--a1:#ff4fd8;--a2:#ffb400;--a3:#5b8cff}
@@ -19,51 +21,71 @@
 html,body{height:100%}
 body{margin:0;font-family:-apple-system,"Hiragino Sans","Hiragino Kaku Gothic ProN",sans-serif;color:var(--ink);
  background:var(--bg);overscroll-behavior:none;overflow-x:hidden}
-body:before{content:"";position:fixed;inset:-20%;z-index:-1;
+body:before{content:"";position:fixed;inset:-20%;z-index:-2;
  background:radial-gradient(40% 35% at 15% 10%,rgba(255,79,216,.35),transparent 70%),
  radial-gradient(45% 40% at 90% 25%,rgba(91,140,255,.30),transparent 70%),
  radial-gradient(50% 45% at 50% 100%,rgba(255,180,0,.22),transparent 70%);
  animation:drift 14s ease-in-out infinite alternate}
 @keyframes drift{to{transform:translate3d(4%,-3%,0) rotate(8deg)}}
+button{font-family:inherit}
 
-header{padding:calc(14px + env(safe-area-inset-top)) 18px 8px}
-.top{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
-#title{font-size:14px;font-weight:700;color:var(--sub);letter-spacing:.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+header{padding:calc(14px + env(safe-area-inset-top)) 18px 6px}
+.top{display:flex;align-items:center;justify-content:space-between;gap:10px}
+#back{display:none;border:0;background:rgba(255,255,255,.1);color:var(--ink);border-radius:99px;padding:6px 12px;font-size:13px;font-weight:800}
+#title{flex:1;font-size:14px;font-weight:700;color:var(--sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #count{font-size:15px;font-weight:900;font-variant-numeric:tabular-nums}
-/* 進み具合（本人案 2026-09-15：スプラっぽく、覚えてた＝緑インクが左から、ミス＝ピンクインクが右から攻めてくる） */
+
+/* 進み具合：覚えてた＝緑インクが左から、ミス＝ピンクインクが右から（スプラっぽく） */
+#inkWrap{display:none}
 .ink{position:relative;height:16px;margin-top:10px;border-radius:99px;background:rgba(255,255,255,.08)}
 .ink>div{position:absolute;top:0;bottom:0;width:0;transition:width .38s cubic-bezier(.2,1.5,.3,1)}
 #inkOk{left:0;border-radius:99px 0 0 99px;background:linear-gradient(90deg,#10b877,#27e39a);box-shadow:0 0 14px rgba(39,227,154,.55)}
 #inkNg{right:0;border-radius:0 99px 99px 0;background:linear-gradient(270deg,#e8266a,#ff4fd8);box-shadow:0 0 14px rgba(255,61,113,.55)}
-.ink>div:after{content:"";position:absolute;top:50%;width:22px;height:22px;margin-top:-11px;border-radius:46% 54% 42% 58%;background:inherit}
+.ink>div:after{content:"";position:absolute;top:50%;width:22px;height:22px;margin-top:-11px;border-radius:46% 54% 42% 58%}
 #inkOk:after{right:-9px;background:#27e39a}#inkNg:after{left:-9px;background:#ff4fd8}
 .ink>div.empty:after{display:none}
-.splat{position:absolute;top:50%;width:10px;height:10px;margin:-5px 0 0 -5px;border-radius:50%;pointer-events:none;
- animation:splat .55s ease-out forwards}
+.splat{position:absolute;top:50%;width:10px;height:10px;margin:-5px 0 0 -5px;border-radius:50%;pointer-events:none;animation:splat .55s ease-out forwards}
 @keyframes splat{0%{transform:translate(0,0) scale(1.4);opacity:1}100%{transform:translate(var(--dx),var(--dy)) scale(.2);opacity:0}}
 .inkNums{display:flex;justify-content:space-between;margin-top:6px;font-size:13px;font-weight:900;font-style:italic;letter-spacing:.06em}
 #nOk{color:#27e39a}#nNg{color:#ff4fd8}
 
 #msg{display:none;text-align:center;font-size:18px;font-weight:700;padding:80px 24px;color:var(--sub)}
 
-#swipe{display:none;flex-direction:column;align-items:center;padding:6px 18px 24px}
-/* ストリーク（本人希望 2026-09-15：ヴァロっぽく。キル表示・段階・画面の光・途切れ） */
+/* 日の一覧 */
+#hub{display:none;padding:8px 18px 40px}
+.hubHead{margin:6px 0 16px}
+.hubHead .big{font-size:30px;font-weight:900;line-height:1.1;background:linear-gradient(90deg,var(--a2),var(--a1));
+ -webkit-background-clip:text;background-clip:text;color:transparent}
+.hubHead .small{margin-top:6px;font-size:13px;font-weight:700;color:var(--sub)}
+.day{border-radius:20px;padding:14px;margin-bottom:12px;background:rgba(255,255,255,.06);border:1.5px solid rgba(255,255,255,.08)}
+.day.today{border-color:var(--a1);box-shadow:0 0 0 1px var(--a1),0 10px 30px rgba(255,79,216,.2)}
+.dayTop{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.dayName{font-size:17px;font-weight:900}
+.badge{font-size:11px;font-weight:900;letter-spacing:.1em;color:#fff;padding:3px 10px;background:var(--a1);
+ clip-path:polygon(8% 0,100% 0,92% 100%,0 100%)}
+.books{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.bk{border:0;border-radius:14px;padding:12px;text-align:left;color:var(--ink);background:rgba(255,255,255,.08)}
+.bk .bn{font-size:13px;font-weight:800;color:var(--sub)}
+.bk .bs{margin-top:4px;font-size:18px;font-weight:900;white-space:nowrap}
+.bk .br{margin-top:2px;font-size:12px;font-weight:800;color:var(--sub)}
+.bk.done{background:linear-gradient(135deg,rgba(39,227,154,.28),rgba(91,140,255,.18))}
+.bk.done .bs{color:#27e39a}
+.bk.part{background:linear-gradient(135deg,rgba(255,180,0,.22),rgba(255,79,216,.15))}
+
+/* カード */
+#swipe{display:none;flex-direction:column;align-items:center;padding:4px 18px 24px}
 .hud{width:100%;max-width:380px;display:flex;align-items:center;justify-content:space-between;height:22px}
 .ticks{display:flex;gap:5px}
 .tick{width:24px;height:10px;background:rgba(255,255,255,.12);clip-path:polygon(28% 0,100% 0,72% 100%,0 100%);transition:background .2s}
 .tick.on{background:var(--tc);box-shadow:0 0 10px var(--tc)}
 #streakNum{font-size:13px;font-weight:900;font-style:italic;letter-spacing:.14em;color:var(--tc)}
-#banner{position:relative;width:100%;max-width:380px;height:70px;display:flex;align-items:center;justify-content:center;
- pointer-events:none;opacity:0}
-#banner .slab{position:absolute;left:6%;right:6%;top:8px;bottom:14px;background:var(--bc,#ff4655);
- clip-path:polygon(5% 0,100% 0,95% 100%,0 100%)}
+#banner{position:relative;width:100%;max-width:380px;height:62px;display:flex;align-items:center;justify-content:center;pointer-events:none;opacity:0}
+#banner .slab{position:absolute;left:6%;right:6%;top:6px;bottom:14px;background:var(--bc,#ff4655);clip-path:polygon(5% 0,100% 0,95% 100%,0 100%)}
 #banner .slab:after{content:"";position:absolute;left:0;right:0;top:0;height:3px;background:rgba(255,255,255,.7)}
-#banner .txt{position:relative;margin-top:-6px;font-size:28px;font-weight:900;font-style:italic;letter-spacing:.1em;
- color:#fff;text-shadow:0 2px 0 rgba(0,0,0,.35);white-space:nowrap}
+#banner .txt{position:relative;margin-top:-8px;font-size:26px;font-weight:900;font-style:italic;letter-spacing:.1em;color:#fff;text-shadow:0 2px 0 rgba(0,0,0,.35);white-space:nowrap}
 #banner .sub{position:absolute;bottom:0;font-size:11px;font-weight:900;letter-spacing:.35em;color:var(--bc,#ff4655)}
 #banner.show{animation:slam .6s cubic-bezier(.2,1.4,.3,1) forwards}
-@keyframes slam{0%{transform:scale(2.6) skewX(-14deg);opacity:0}35%{transform:scale(.9) skewX(-8deg);opacity:1}
- 55%{transform:scale(1.06) skewX(-8deg)}100%{transform:scale(1) skewX(-8deg);opacity:1}}
+@keyframes slam{0%{transform:scale(2.6) skewX(-14deg);opacity:0}35%{transform:scale(.9) skewX(-8deg);opacity:1}55%{transform:scale(1.06) skewX(-8deg)}100%{transform:scale(1) skewX(-8deg);opacity:1}}
 #banner.out{transition:opacity .35s,transform .35s;opacity:0!important;transform:scale(.9) skewX(-8deg)}
 #flash{position:fixed;inset:0;pointer-events:none;z-index:8;opacity:0;box-shadow:inset 0 0 140px 40px var(--tc)}
 #flash.go{animation:flash .7s ease-out}
@@ -71,83 +93,79 @@ header{padding:calc(14px + env(safe-area-inset-top)) 18px 8px}
 #aura{position:fixed;left:-20%;right:-20%;bottom:-30%;height:70%;pointer-events:none;z-index:-1;opacity:0;
  background:radial-gradient(50% 50% at 50% 60%,var(--tc),transparent 70%);transition:opacity .5s;animation:breathe 1.6s ease-in-out infinite}
 @keyframes breathe{50%{transform:scale(1.08)}}
-body[data-lv="1"] #aura{opacity:.18}body[data-lv="2"] #aura{opacity:.3}
-body[data-lv="3"] #aura{opacity:.45}body[data-lv="4"] #aura{opacity:.6}
-.card.shake{animation:shake .4s}
-@keyframes shake{20%{transform:translateX(-10px) rotate(-2deg)}40%{transform:translateX(9px) rotate(2deg)}
- 60%{transform:translateX(-6px)}80%{transform:translateX(4px)}}
-#best{margin-top:8px;display:inline-block;font-size:12px;font-weight:900;font-style:italic;letter-spacing:.1em;color:#fff;
- padding:4px 14px;background:var(--bc,#ff4655);clip-path:polygon(6% 0,100% 0,94% 100%,0 100%);white-space:nowrap}
-#best small{font-size:10px;letter-spacing:.08em;opacity:.9;margin-left:6px}
-#stage{position:relative;width:100%;max-width:380px;height:min(58vh,400px)}
+body[data-lv="1"] #aura{opacity:.18}body[data-lv="2"] #aura{opacity:.3}body[data-lv="3"] #aura{opacity:.45}body[data-lv="4"] #aura{opacity:.6}
+
+#stage{position:relative;width:100%;max-width:380px;height:min(52vh,380px)}
 .card{position:absolute;inset:0;border-radius:30px;background:#fff;color:#12101f;
  box-shadow:0 30px 60px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.08);
  display:flex;flex-direction:column;align-items:center;justify-content:center;padding:26px 22px;
  touch-action:none;user-select:none;-webkit-user-select:none;will-change:transform;overflow:hidden}
 .card.enter{animation:enter .28s cubic-bezier(.2,1.3,.4,1)}
 @keyframes enter{from{transform:scale(.9) translateY(14px);opacity:.3}to{transform:none;opacity:1}}
+.card.shake{animation:shake .4s}
+@keyframes shake{20%{transform:translateX(-10px) rotate(-2deg)}40%{transform:translateX(9px) rotate(2deg)}60%{transform:translateX(-6px)}80%{transform:translateX(4px)}}
 .card .glow{position:absolute;inset:0;border-radius:30px;opacity:0;pointer-events:none}
 .card .gng{background:linear-gradient(135deg,rgba(255,61,113,.55),rgba(255,79,216,.25))}
 .card .gok{background:linear-gradient(135deg,rgba(39,227,154,.55),rgba(91,140,255,.2))}
-.card .mark{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
- font-size:190px;font-weight:900;line-height:1;opacity:0;pointer-events:none;
- text-shadow:0 0 30px rgba(255,255,255,.9)}
+.card .mark{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:190px;font-weight:900;line-height:1;opacity:0;pointer-events:none;text-shadow:0 0 30px rgba(255,255,255,.9)}
 .card .mng{color:var(--ng)}.card .mok{color:#12c081}
 .card .no{position:relative;font-size:13px;font-weight:800;color:#8b87a8;letter-spacing:.08em}
-.card .word{position:relative;font-size:clamp(30px,10vw,44px);font-weight:900;letter-spacing:-.01em;
- text-align:center;word-break:break-word;margin-top:8px;line-height:1.1}
-.card .pos{position:relative;margin-top:14px;font-size:13px;font-weight:900;color:#fff;padding:4px 12px;border-radius:99px;
- background:linear-gradient(90deg,var(--a3),var(--a1))}
-.card .mean{position:relative;margin-top:14px;font-size:18px;font-weight:700;color:#3a3752;text-align:center;line-height:1.55}
-.hint{display:flex;justify-content:space-between;width:100%;max-width:380px;margin-top:12px;
- font-size:12px;font-weight:800;color:var(--sub);letter-spacing:.06em}
+.card .word{position:relative;font-size:clamp(30px,10vw,44px);font-weight:900;letter-spacing:-.01em;text-align:center;word-break:break-word;margin-top:8px;line-height:1.1}
+.card .back{position:relative;display:flex;flex-direction:column;align-items:center;min-height:86px;justify-content:flex-start}
+.card .tapHint{margin-top:22px;font-size:13px;font-weight:900;letter-spacing:.12em;color:#fff;padding:8px 16px;border-radius:99px;
+ background:linear-gradient(90deg,var(--a3),var(--a1));animation:hintPulse 1.4s ease-in-out infinite}
+@keyframes hintPulse{50%{transform:scale(1.06)}}
+.card .pos{margin-top:14px;font-size:13px;font-weight:900;color:#fff;padding:4px 12px;border-radius:99px;background:linear-gradient(90deg,var(--a3),var(--a1))}
+.card .mean{margin-top:12px;font-size:18px;font-weight:700;color:#3a3752;text-align:center;line-height:1.55;animation:enter .25s ease-out}
+.hint{display:flex;justify-content:space-between;width:100%;max-width:380px;margin-top:12px;font-size:12px;font-weight:800;color:var(--sub);letter-spacing:.06em}
 .btns{display:flex;align-items:center;justify-content:center;gap:26px;margin-top:14px}
-.round{border:0;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:900;color:#fff;
- transition:transform .12s}
+.round{border:0;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:900;color:#fff;transition:transform .12s,opacity .2s}
 .round:active{transform:scale(.88)}
+.round:disabled{opacity:.28}
 #bng,#bok{width:76px;height:76px;font-size:36px}
 #bng{background:linear-gradient(135deg,#ff3d71,#ff4fd8);box-shadow:0 10px 26px rgba(255,61,113,.5)}
 #bok{background:linear-gradient(135deg,#27e39a,#26c6ff);box-shadow:0 10px 26px rgba(39,227,154,.45)}
 #bundo{width:52px;height:52px;font-size:22px;background:rgba(255,255,255,.12);color:var(--ink)}
 
-#review{display:none;padding:10px 18px 130px}
-.result{display:flex;align-items:center;gap:18px;margin:6px 0 18px}
-.ring{--p:0;width:118px;height:118px;border-radius:50%;flex:none;display:grid;place-items:center;
- background:conic-gradient(var(--ok) calc(var(--p)*1%),rgba(255,255,255,.1) 0)}
+/* 結果 */
+#review{display:none;padding:8px 18px 40px}
+.result{display:flex;align-items:center;gap:18px;margin:6px 0 16px}
+.ring{--p:0;width:118px;height:118px;border-radius:50%;flex:none;display:grid;place-items:center;background:conic-gradient(var(--ok) calc(var(--p)*1%),rgba(255,255,255,.1) 0)}
 .ring>div{width:94px;height:94px;border-radius:50%;background:var(--bg);display:grid;place-items:center;text-align:center}
 #score{font-size:30px;font-weight:900;font-variant-numeric:tabular-nums;line-height:1}
 #outof{font-size:12px;color:var(--sub);font-weight:800}
-#rank{font-size:40px;font-weight:900;line-height:1;background:linear-gradient(90deg,var(--a2),var(--a1));
- -webkit-background-clip:text;background-clip:text;color:transparent}
+#rank{font-size:40px;font-weight:900;line-height:1;background:linear-gradient(90deg,var(--a2),var(--a1));-webkit-background-clip:text;background-clip:text;color:transparent}
 #rankSub{font-size:14px;font-weight:700;color:var(--sub);margin-top:6px}
+#best{margin-top:8px;display:inline-block;font-size:12px;font-weight:900;font-style:italic;letter-spacing:.1em;color:#fff;padding:4px 14px;background:var(--bc,#ff4655);clip-path:polygon(6% 0,100% 0,94% 100%,0 100%);white-space:nowrap}
+#best small{font-size:10px;letter-spacing:.08em;opacity:.9;margin-left:6px}
+.again{display:grid;gap:10px;margin:4px 0 18px}
+.pill{border:0;border-radius:99px;padding:16px;font-size:18px;font-weight:900;color:#fff;letter-spacing:.03em}
+.pill:active{transform:scale(.97)}
+#againMiss{background:linear-gradient(90deg,#ff3d71,#ff4fd8);box-shadow:0 10px 26px rgba(255,61,113,.4)}
+#againAll{background:linear-gradient(90deg,var(--a3),#26c6ff)}
+#toHub{background:rgba(255,255,255,.1)}
 .lead{font-size:13px;font-weight:800;color:var(--sub);margin:0 0 10px;letter-spacing:.04em}
 #list{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
-button.w{display:flex;flex-direction:column;align-items:flex-start;text-align:left;padding:10px 12px;border-radius:14px;
- border:1.5px solid rgba(255,255,255,.12);background:rgba(255,255,255,.06);color:var(--ink);min-height:52px;word-break:break-all}
+button.w{display:flex;flex-direction:column;align-items:flex-start;text-align:left;padding:10px 12px;border-radius:14px;border:1.5px solid rgba(255,255,255,.12);background:rgba(255,255,255,.06);color:var(--ink);min-height:52px;word-break:break-all}
 button.w .n{font-size:11px;font-weight:800;color:var(--sub)}
 button.w .t{font-size:16px;font-weight:800;margin-top:2px}
+button.w .m{font-size:12px;font-weight:700;color:var(--sub);margin-top:2px}
 button.w.on{background:linear-gradient(135deg,rgba(255,61,113,.35),rgba(255,79,216,.2));border-color:var(--ng)}
-footer{display:none;position:fixed;left:0;right:0;bottom:0;padding:14px 18px calc(14px + env(safe-area-inset-bottom));
- background:linear-gradient(to top,var(--bg) 60%,transparent)}
-#send{width:100%;border:0;border-radius:99px;padding:18px;font-size:19px;font-weight:900;color:#fff;letter-spacing:.04em;
- background:linear-gradient(90deg,var(--a1),var(--a2));box-shadow:0 12px 30px rgba(255,79,216,.45)}
-#send:active{transform:scale(.97)}
-
-#done{display:none;min-height:70vh;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px}
-#done .big{font-size:48px;font-weight:900;background:linear-gradient(90deg,var(--ok),var(--a3));
- -webkit-background-clip:text;background-clip:text;color:transparent}
-#done .small{margin-top:10px;font-size:16px;font-weight:700;color:var(--sub)}
 canvas#fx{position:fixed;inset:0;pointer-events:none;z-index:9}
 </style>
 </head>
 <body>
 <canvas id="fx"></canvas><div id="flash"></div><div id="aura"></div>
 <header>
- <div class="top"><div id="title">単語チェック</div><div id="count"></div></div>
- <div class="ink" id="ink"><div id="inkOk" class="empty"></div><div id="inkNg" class="empty"></div></div>
- <div class="inkNums"><span id="nOk">○ 0</span><span id="nNg">✕ 0</span></div>
+ <div class="top"><button id="back">← 一覧</button><div id="title">単語チェック</div><div id="count"></div></div>
+ <div id="inkWrap">
+  <div class="ink" id="ink"><div id="inkOk" class="empty"></div><div id="inkNg" class="empty"></div></div>
+  <div class="inkNums"><span id="nOk">○ 0</span><span id="nNg">✕ 0</span></div>
+ </div>
 </header>
 <div id="msg">読み込み中…</div>
+
+<div id="hub"><div class="hubHead"><div class="big" id="hubBig"></div><div class="small" id="hubSmall"></div></div><div id="days"></div></div>
 
 <div id="swipe">
  <div class="hud"><div class="ticks"><i class="tick"></i><i class="tick"></i><i class="tick"></i><i class="tick"></i><i class="tick"></i></div><div id="streakNum"></div></div>
@@ -166,67 +184,170 @@ canvas#fx{position:fixed;inset:0;pointer-events:none;z-index:9}
   <div class="ring" id="ring"><div><div><div id="score">0</div><div id="outof"></div></div></div></div>
   <div><div id="rank"></div><div id="rankSub"></div><div id="best"></div></div>
  </div>
- <p class="lead">ミスした語は赤。タップで直せる</p>
+ <div class="again">
+  <button class="pill" id="againMiss"></button>
+  <button class="pill" id="againAll">もう一周</button>
+  <button class="pill" id="toHub">一覧にもどる</button>
+ </div>
+ <p class="lead" id="listLead"></p>
  <div id="list"></div>
 </div>
-
-<div id="done"><div class="big">送信完了</div><div class="small" id="doneSub"></div></div>
-<footer><button id="send"></button></footer>
 
 <script>
 var API = "https://script.google.com/macros/s/AKfycbyzqMMPHQpZS9j8c3MFReDbogX0I0Rb4MFqFcuArFbUiCckxR9yFr_DtTOpj7zN7CRHYw/exec";
 var SID = (new URLSearchParams(location.search).get("s") || "").trim().toLowerCase();
-var D = null, i = 0, res = [], busy = false;
+var KEY = new URLSearchParams(location.hash.slice(1)).get("k") || "";
+var PERIOD = SID.charAt(6) === "p";      // 期間の QR（アプリで宿題）か、紙ごとの QR か
+var WD = "日月火水木金土";
+var P = null;                            // 読み込んだデータ
+var S = null;                            // いまのセッション
+var busy = false;
 var $ = function (id) { return document.getElementById(id); };
 function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
 function screen(id) {
-  ["msg", "swipe", "review", "done"].forEach(function (k) { $(k).style.display = "none"; });
-  document.querySelector("footer").style.display = id === "review" ? "block" : "none";
-  $(id).style.display = (id === "swipe" || id === "done") ? "flex" : "block";
+  ["msg", "hub", "swipe", "review"].forEach(function (k) { $(k).style.display = "none"; });
+  $(id).style.display = id === "swipe" ? "flex" : "block";
+  $("inkWrap").style.display = (id === "swipe" || id === "review") ? "block" : "none";
+  $("back").style.display = PERIOD && id !== "hub" && id !== "msg" ? "block" : "none";
+  if (id !== "swipe") document.body.dataset.lv = 0;
 }
 function show(text) { screen("msg"); $("msg").textContent = text; }
 function buzz(ms) { try { if (navigator.vibrate) navigator.vibrate(ms); } catch (e) {} }
+function store(k, v) { try { if (v === undefined) return JSON.parse(localStorage.getItem(k) || "null"); localStorage.setItem(k, JSON.stringify(v)); } catch (e) { return null; } }
+function rid() { var a = new Uint8Array(9); crypto.getRandomValues(a); return Array.prototype.map.call(a, function (x) { return ("0" + x.toString(36)).slice(-2); }).join("").slice(0, 16); }
 
-// ---------------------------------------------------------------- カード
-function progress() {
-  var n = D.words.length, ok = 0, ng = 0;
-  for (var j = 0; j < i; j++) { if (res[j]) ng++; else ok++; }
-  $("count").textContent = Math.min(i + 1, n) + " / " + n;
-  $("inkOk").style.width = (ok / n * 100) + "%"; $("inkOk").classList.toggle("empty", !ok);
-  $("inkNg").style.width = (ng / n * 100) + "%"; $("inkNg").classList.toggle("empty", !ng);
-  $("nOk").textContent = "○ " + ok; $("nNg").textContent = "✕ " + ng;
+// ================================================================ 日の一覧
+function md(iso) { var d = new Date(iso + "T00:00:00"); return (d.getMonth() + 1) + "/" + d.getDate() + "（" + WD[d.getDay()] + "）"; }
+function todayIso() { var d = new Date(); return d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).slice(-2) + "-" + ("0" + d.getDate()).slice(-2); }
+function progKey(di, bi) { return "wc:" + SID + ":" + (di + 1) + ":" + P.days[di].books[bi].b; }
+function hub() {
+  screen("hub"); $("title").textContent = "単語チェック"; $("count").textContent = "";
+  $("hubBig").textContent = md(P.test) + " テストまで";
+  $("hubSmall").textContent = "毎日1日分。先の日もできる。何周してもOK";
+  var box = $("days"); box.innerHTML = ""; var today = todayIso(), scrollTo = null;
+  P.days.forEach(function (day, di) {
+    var card = el("div", "day" + (day.date === today ? " today" : "")), top = el("div", "dayTop");
+    top.appendChild(el("div", "dayName", (di + 1) + "日目　" + md(day.date)));
+    if (day.date === today) { top.appendChild(el("div", "badge", "TODAY")); scrollTo = card; }
+    card.appendChild(top);
+    var books = el("div", "books");
+    day.books.forEach(function (bk, bi) {
+      var pr = store(progKey(di, bi)), b = el("button", "bk" + (pr ? (pr.bestOk === bk.words.length ? " done" : " part") : ""));
+      b.appendChild(el("div", "bn", bk.label));
+      b.appendChild(el("div", "bs", pr ? ("○ " + pr.bestOk + " / " + bk.words.length) : "スタート"));
+      if (pr) b.appendChild(el("div", "br", pr.rounds + "周" + (pr.bestOk === bk.words.length ? "・コンプ" : "")));
+      b.onclick = function () { start(di, bi, "all"); };
+      books.appendChild(b);
+    });
+    card.appendChild(books); box.appendChild(card);
+  });
+  if (scrollTo) setTimeout(function () { scrollTo.scrollIntoView({ block: "center" }); }, 50);
 }
-// インクの先端でしぶきを飛ばす
+$("back").onclick = function () { commit(); hub(); };
+
+// ================================================================ セッション
+function shuffle(a) { for (var j = a.length - 1; j > 0; j--) { var r = Math.floor(Math.random() * (j + 1)), t = a[j]; a[j] = a[r]; a[r] = t; } return a; }
+function start(di, bi, mode, only) {
+  var bk = P.days[di].books[bi], pr = store(progKey(di, bi)) || { rounds: 0, bestOk: 0 };
+  var idx = only ? only.slice() : bk.words.map(function (w, k) { return k; });
+  var round = pr.rounds + 1;
+  if (round > 1) shuffle(idx);          // 1 周目は紙と同じ順、2 周目からは混ぜる
+  S = { di: di, bi: bi, mode: mode, round: round, idx: idx, i: 0, res: [], times: [], undo: 0,
+        started: Date.now(), id: rid(), sent: false, shownAt: 0, flipAt: 0, flipped: false };
+  $("title").textContent = (P.days.length > 1 ? (di + 1) + "日目 " : "") + bk.label + (mode === "miss" ? "　ミスだけ" : "") + "　" + round + "周目";
+  screen("swipe"); streakFx(0, false); render();
+}
+function word() { return P.days[S.di].books[S.bi].words[S.idx[S.i]]; }
+function counts() { var ok = 0, ng = 0; for (var j = 0; j < S.i; j++) { if (S.res[j]) ng++; else ok++; } return [ok, ng]; }
+function progress() {
+  var n = S.idx.length, c = counts();
+  $("count").textContent = Math.min(S.i + 1, n) + " / " + n;
+  $("inkOk").style.width = (c[0] / n * 100) + "%"; $("inkOk").classList.toggle("empty", !c[0]);
+  $("inkNg").style.width = (c[1] / n * 100) + "%"; $("inkNg").classList.toggle("empty", !c[1]);
+  $("nOk").textContent = "○ " + c[0]; $("nNg").textContent = "✕ " + c[1];
+}
 function splat(miss) {
-  var n = D.words.length, ok = 0, ng = 0;
-  for (var j = 0; j < i; j++) { if (res[j]) ng++; else ok++; }
-  var ink = $("ink"), x = miss ? (1 - ng / n) * ink.clientWidth : ok / n * ink.clientWidth;
-  var color = miss ? "#ff4fd8" : "#27e39a";
+  var n = S.idx.length, c = counts(), ink = $("ink");
+  var x = miss ? (1 - c[1] / n) * ink.clientWidth : c[0] / n * ink.clientWidth, color = miss ? "#ff4fd8" : "#27e39a";
   for (var k = 0; k < 9; k++) {
-    var s = el("i", "splat"), a = Math.random() * Math.PI * 2, d = 14 + Math.random() * 26;
-    s.style.left = x + "px"; s.style.background = color;
-    var size = 5 + Math.random() * 9; s.style.width = s.style.height = size + "px";
+    var s = el("i", "splat"), a = Math.random() * Math.PI * 2, d = 14 + Math.random() * 26, size = 5 + Math.random() * 9;
+    s.style.left = x + "px"; s.style.background = color; s.style.width = s.style.height = size + "px";
     s.style.setProperty("--dx", Math.cos(a) * d + "px"); s.style.setProperty("--dy", Math.sin(a) * d * .6 + "px");
     ink.appendChild(s); setTimeout(function (x) { return function () { x.remove(); }; }(s), 600);
   }
 }
-function streak() { var k = 0; for (var j = i - 1; j >= 0 && res[j] === false; j--) k++; return k; }
-// 連続「覚えてた」の段階（数, 表示, 色）
+function setButtons() { $("bng").disabled = $("bok").disabled = !S.flipped; $("bundo").disabled = S.i === 0; }
+function render() {
+  var stage = $("stage"); stage.innerHTML = ""; progress();
+  if (S.i >= S.idx.length) { finish(); return; }
+  var w = word(), card = el("div", "card enter");
+  card.appendChild(el("div", "glow gng")); card.appendChild(el("div", "glow gok"));
+  card.appendChild(el("div", "mark mng", "✕")); card.appendChild(el("div", "mark mok", "○"));
+  card.appendChild(el("div", "no", "No." + (w[4] || w[0])));
+  card.appendChild(el("div", "word", w[1]));
+  var back = el("div", "back"); card.appendChild(back);
+  S.flipped = false; S.shownAt = Date.now(); S.flipAt = 0;
+  if (PERIOD) back.appendChild(el("div", "tapHint", "TAP で答え"));
+  else flip(card, back);                 // 紙の QR は答え合わせの後なので最初から訳を出す
+  stage.appendChild(card); setButtons();
+  var sx = null, dx = 0;
+  card.onpointerdown = function (e) { sx = e.clientX; dx = 0; card.setPointerCapture(e.pointerId); card.style.transition = "none"; card.classList.remove("enter", "shake"); };
+  card.onpointermove = function (e) {
+    if (sx === null) return; dx = e.clientX - sx;
+    if (!S.flipped) { card.style.transform = "translateX(" + dx * .15 + "px)"; return; }
+    card.style.transform = "translateX(" + dx + "px) rotate(" + (dx / 16) + "deg)"; tint(card, dx / 110);
+  };
+  card.onpointerup = card.onpointercancel = function () {
+    if (sx === null) return; sx = null;
+    if (!S.flipped) { card.style.transition = "transform .3s cubic-bezier(.2,1.5,.4,1)"; card.style.transform = ""; flip(card, back); return; }
+    if (dx > 90) decide(false, 1); else if (dx < -90) decide(true, -1);
+    else { card.style.transition = "transform .35s cubic-bezier(.2,1.5,.4,1)"; card.style.transform = ""; tint(card, 0); }
+  };
+}
+// 答え（品詞・訳）を出す。出すまではフリックできない（見ずに ○ を押せないように）
+function flip(card, back) {
+  if (S.flipped) return;
+  var w = word(); back.innerHTML = "";
+  if (w[3]) back.appendChild(el("div", "pos", w[3]));
+  if (w[2]) back.appendChild(el("div", "mean", w[2].split("／").join("、")));
+  S.flipped = true; S.flipAt = Date.now(); setButtons(); buzz(6);
+}
+function tint(card, r) {
+  r = Math.max(-1, Math.min(1, r)); var a = Math.abs(r);
+  card.querySelector(".gng").style.opacity = r < 0 ? a : 0; card.querySelector(".gok").style.opacity = r > 0 ? a : 0;
+  card.querySelector(".mng").style.opacity = r < 0 ? a * .95 : 0; card.querySelector(".mok").style.opacity = r > 0 ? a * .95 : 0;
+}
+function decide(miss, dir) {
+  if (busy || !S.flipped || S.i >= S.idx.length) return; busy = true;
+  var prev = streak(), now = Date.now();
+  S.res[S.i] = miss; S.times[S.i] = [S.flipAt ? S.flipAt - S.shownAt : 0, now - S.shownAt];
+  buzz(miss ? [18, 40, 18] : 12);
+  var card = $("stage").firstChild; tint(card, dir); card.style.transition = "transform .32s cubic-bezier(.4,0,.2,1)";
+  card.style.transform = "translateX(" + (dir * 520) + "px) rotate(" + (dir * 32) + "deg)";
+  setTimeout(function () {
+    busy = false; S.i++; render(); splat(miss); streakFx(prev, true);
+    if (miss && prev >= 3) { var c = $("stage").firstChild; if (c) { c.classList.remove("enter"); c.classList.add("shake"); } }
+  }, 220);
+}
+$("bng").onclick = function () { decide(true, -1); };
+$("bok").onclick = function () { decide(false, 1); };
+$("bundo").onclick = function () { if (S.i > 0 && !busy) { S.i--; S.res.length = S.i; S.times.length = S.i; S.undo++; render(); streakFx(0, false); } };
+
+// ================================================================ ストリーク（ヴァロっぽく）
+function streak() { var k = 0; for (var j = S.i - 1; j >= 0 && S.res[j] === false; j--) k++; return k; }
 var TIERS = [[50, "FLAWLESS", "#ffd166"], [40, "LEGENDARY", "#ffd166"], [30, "GODLIKE", "#c77dff"],
   [20, "UNSTOPPABLE", "#ff4655"], [15, "ON FIRE", "#ff7a1a"], [10, "CLUTCH", "#ffd166"], [5, "ACE", "#ff4655"],
   [4, "QUADRA KILL", "#ff7a1a"], [3, "TRIPLE KILL", "#ffd166"], [2, "DOUBLE KILL", "#2ee6c5"]];
 function tierOf(k) { for (var t = 0; t < TIERS.length; t++) if (k >= TIERS[t][0]) return TIERS[t]; return null; }
 var bannerTimer = null;
 function banner(text, sub, color) {
-  var b = $("banner");
-  b.style.setProperty("--bc", color); b.querySelector(".txt").textContent = text; b.querySelector(".sub").textContent = sub;
+  var b = $("banner"); b.style.setProperty("--bc", color); b.querySelector(".txt").textContent = text; b.querySelector(".sub").textContent = sub;
   b.classList.remove("show", "out"); void b.offsetWidth; b.classList.add("show");
   clearTimeout(bannerTimer); bannerTimer = setTimeout(function () { b.classList.add("out"); }, 1100);
 }
 function flash() { var f = $("flash"); f.classList.remove("go"); void f.offsetWidth; f.classList.add("go"); }
-// ストリークの表示を今の状態に合わせる。prev は直前のストリーク（途切れた演出に使う）
 function streakFx(prev, animate) {
-  var k = streak(), t = tierOf(k), color = t ? t[2] : "#2ee6c5";
+  var k = S ? streak() : 0, t = tierOf(k), color = t ? t[2] : "#2ee6c5";
   document.documentElement.style.setProperty("--tc", color);
   var fill = k === 0 ? 0 : (k % 5 || 5);
   [].forEach.call(document.querySelectorAll(".tick"), function (x, n) { x.classList.toggle("on", n < fill); });
@@ -234,68 +355,12 @@ function streakFx(prev, animate) {
   document.body.dataset.lv = k >= 20 ? 4 : k >= 10 ? 3 : k >= 5 ? 2 : k >= 3 ? 1 : 0;
   if (!animate) return;
   var exact = TIERS.filter(function (x) { return x[0] === k; })[0];
-  if (exact) {
-    banner(exact[1], k + " STREAK", exact[2]); flash(); buzz(k >= 5 ? [25, 40, 25, 40, 60] : [20, 30, 30]);
-    if (k >= 10) confetti(k >= 30 ? 160 : 70);
-  } else if (k > 5 && k % 5 === 0) {
-    banner("×" + k, "STREAK", color); flash();
-  } else if (k === 0 && prev >= 3) {
-    banner("STREAK LOST", prev + " STREAK", "#6f6d86");
-  }
+  if (exact) { banner(exact[1], k + " STREAK", exact[2]); flash(); buzz(k >= 5 ? [25, 40, 25, 40, 60] : [20, 30, 30]); if (k >= 10) confetti(k >= 30 ? 160 : 70); }
+  else if (k > 5 && k % 5 === 0) { banner("×" + k, "STREAK", color); flash(); }
+  else if (k === 0 && prev >= 3) banner("STREAK LOST", prev + " STREAK", "#6f6d86");
 }
-function render() {
-  var stage = $("stage"); stage.innerHTML = "";
-  progress();
-  if (i >= D.words.length) { finish(); return; }
-  // w = [紙の No.（送信用）, 単語, 日本語訳, 品詞（推定）, 単語帳の番号]
-  var w = D.words[i], card = el("div", "card enter");
-  card.appendChild(el("div", "glow gng")); card.appendChild(el("div", "glow gok"));
-  card.appendChild(el("div", "mark mng", "✕")); card.appendChild(el("div", "mark mok", "○"));
-  card.appendChild(el("div", "no", "No." + (w[4] || w[0])));
-  card.appendChild(el("div", "word", w[1]));
-  if (w[3]) card.appendChild(el("div", "pos", w[3]));
-  if (w[2]) card.appendChild(el("div", "mean", w[2].split("／").join("、")));
-  stage.appendChild(card);
-  var sx = null, dx = 0;
-  card.onpointerdown = function (e) { sx = e.clientX; dx = 0; card.setPointerCapture(e.pointerId); card.style.transition = "none"; card.classList.remove("enter"); };
-  card.onpointermove = function (e) {
-    if (sx === null) return; dx = e.clientX - sx;
-    card.style.transform = "translateX(" + dx + "px) rotate(" + (dx / 16) + "deg)"; tint(card, dx / 110);
-  };
-  card.onpointerup = card.onpointercancel = function () {
-    if (sx === null) return; sx = null;
-    if (dx > 90) decide(false, 1); else if (dx < -90) decide(true, -1);
-    else { card.style.transition = "transform .35s cubic-bezier(.2,1.5,.4,1)"; card.style.transform = ""; tint(card, 0); }
-  };
-}
-// 向きの色を少しずつ帯び、○✕ が浮かぶ
-function tint(card, r) {
-  r = Math.max(-1, Math.min(1, r)); var a = Math.abs(r);
-  card.querySelector(".gng").style.opacity = r < 0 ? a : 0;
-  card.querySelector(".gok").style.opacity = r > 0 ? a : 0;
-  card.querySelector(".mng").style.opacity = r < 0 ? a * .95 : 0;
-  card.querySelector(".mok").style.opacity = r > 0 ? a * .95 : 0;
-}
-function decide(miss, dir) {
-  if (busy || i >= D.words.length) return; busy = true;
-  var prev = streak(); res[i] = miss;
-  buzz(miss ? [18, 40, 18] : 12);
-  var card = $("stage").firstChild; tint(card, dir); card.style.transition = "transform .32s cubic-bezier(.4,0,.2,1)";
-  card.style.transform = "translateX(" + (dir * 520) + "px) rotate(" + (dir * 32) + "deg)";
-  setTimeout(function () {
-    busy = false; i++; render(); splat(miss); streakFx(prev, true);
-    if (miss && prev >= 3) { var c = $("stage").firstChild; if (c) { c.classList.remove("enter"); c.classList.add("shake"); } }
-  }, 220);
-}
-$("bng").onclick = function () { decide(true, -1); };
-$("bok").onclick = function () { decide(false, 1); };
-$("bundo").onclick = function () { if (i > 0 && !busy) { i--; res.length = i; render(); streakFx(0, false); } };
 
-// ---------------------------------------------------------------- 結果
-function label() {
-  var k = res.filter(Boolean).length;
-  $("send").textContent = k ? ("ミス " + k + " 語で送信") : "全部覚えてた！ 送信";
-}
+// ================================================================ 結果
 function rankOf(p) {
   if (p >= 100) return ["神", "パーフェクト"];
   if (p >= 90) return ["えぐい", "ほぼ完璧"];
@@ -307,41 +372,56 @@ function countUp(to, n) {
   var t0 = null;
   function step(t) {
     if (!t0) t0 = t; var k = Math.min(1, (t - t0) / 700), e = 1 - Math.pow(1 - k, 3);
-    $("score").textContent = Math.round(to * e);
-    $("ring").style.setProperty("--p", (to / n * 100 * e).toFixed(1));
+    $("score").textContent = Math.round(to * e); $("ring").style.setProperty("--p", (to / n * 100 * e).toFixed(1));
     if (k < 1) requestAnimationFrame(step);
   }
   requestAnimationFrame(step);
 }
+function missIdx() { return S.idx.filter(function (x, k) { return S.res[k]; }); }
 function finish() {
-  screen("review"); $("count").textContent = "結果"; document.body.dataset.lv = 0;
-  var run = 0, best = 0;
-  res.forEach(function (x) { run = x === false ? run + 1 : 0; best = Math.max(best, run); });
-  var bt = tierOf(best);
-  $("best").textContent = "BEST " + best;
-  if (bt) $("best").appendChild(el("small", "", bt[1]));
+  screen("review"); $("count").textContent = "結果";
+  var n = S.idx.length, ok = S.res.filter(function (x) { return x === false; }).length, p = ok / n * 100;
+  var run = 0, best = 0; S.res.forEach(function (x) { run = x === false ? run + 1 : 0; best = Math.max(best, run); });
+  var r = rankOf(p), bt = tierOf(best);
+  $("rank").textContent = r[0]; $("rankSub").textContent = r[1]; $("outof").textContent = "/ " + n;
+  $("best").textContent = "BEST " + best; if (bt) $("best").appendChild(el("small", "", bt[1]));
   $("best").style.setProperty("--bc", bt ? bt[2] : "#6f6d86");
-  var n = D.words.length, ok = res.filter(function (x) { return x === false; }).length, p = ok / n * 100;
-  var r = rankOf(p); $("rank").textContent = r[0]; $("rankSub").textContent = r[1]; $("outof").textContent = "/ " + n;
-  countUp(ok, n);
-  if (p >= 75) confetti(p >= 90 ? 180 : 90);
+  countUp(ok, n); if (p >= 75) confetti(p >= 90 ? 180 : 90);
+  if (PERIOD) {
+    var pr = store(progKey(S.di, S.bi)) || { rounds: 0, bestOk: 0 };
+    var full = P.days[S.di].books[S.bi].words.length;
+    // 一覧の「○ いくつ」は全語を回した周のうち一番いい結果
+    store(progKey(S.di, S.bi), { rounds: pr.rounds + 1, bestOk: S.mode === "all" ? Math.max(pr.bestOk, ok) : pr.bestOk, full: full });
+  }
+  var miss = missIdx();
+  $("againMiss").style.display = PERIOD && miss.length ? "block" : "none";
+  $("againMiss").textContent = "ミスだけもう一周（" + miss.length + "語）";
+  $("againAll").style.display = PERIOD ? "block" : "none";
+  $("toHub").textContent = PERIOD ? "一覧にもどる" : "送信して終わる";
+  $("listLead").textContent = "ミスした語は赤。押しまちがいはタップで直せる";
   var list = $("list"); list.innerHTML = "";
-  D.words.forEach(function (w, k) {
-    var b = el("button", "w" + (res[k] ? " on" : ""));
+  S.idx.forEach(function (wi, k) {
+    var w = P.days[S.di].books[S.bi].words[wi], b = el("button", "w" + (S.res[k] ? " on" : ""));
     b.appendChild(el("span", "n", "No." + (w[4] || w[0]))); b.appendChild(el("span", "t", w[1]));
-    b.onclick = function () { res[k] = !res[k]; b.classList.toggle("on", res[k]); buzz(8); label(); };
+    if (w[2]) b.appendChild(el("span", "m", w[2].split("／")[0]));
+    b.onclick = function () { S.res[k] = !S.res[k]; b.classList.toggle("on", S.res[k]); buzz(8); refreshAgain(); };
     list.appendChild(b);
   });
-  label();
 }
+function refreshAgain() { var m = missIdx(); $("againMiss").style.display = PERIOD && m.length ? "block" : "none"; $("againMiss").textContent = "ミスだけもう一周（" + m.length + "語）"; }
+$("againMiss").onclick = function () { var m = missIdx(), di = S.di, bi = S.bi; commit(); start(di, bi, "miss", m); };
+$("againAll").onclick = function () { var di = S.di, bi = S.bi; commit(); start(di, bi, "all"); };
+$("toHub").onclick = function () {
+  commit();
+  if (PERIOD) hub(); else { screen("msg"); $("msg").textContent = "送信しました。おつかれさま"; confetti(140); }
+};
 
-// ---------------------------------------------------------------- 紙吹雪
+// ================================================================ 紙吹雪
 function confetti(count) {
   var cv = $("fx"), cx = cv.getContext("2d"), W = cv.width = innerWidth * devicePixelRatio, H = cv.height = innerHeight * devicePixelRatio;
   var colors = ["#ff4fd8", "#ffb400", "#27e39a", "#5b8cff", "#ffffff"], ps = [];
-  for (var k = 0; k < count; k++) ps.push({ x: W / 2, y: H * .35, vx: (Math.random() - .5) * 26 * devicePixelRatio,
-    vy: (-Math.random() * 22 - 6) * devicePixelRatio, s: (6 + Math.random() * 8) * devicePixelRatio,
-    r: Math.random() * 6, vr: (Math.random() - .5) * .4, c: colors[k % colors.length] });
+  for (var k = 0; k < count; k++) ps.push({ x: W / 2, y: H * .35, vx: (Math.random() - .5) * 26 * devicePixelRatio, vy: (-Math.random() * 22 - 6) * devicePixelRatio,
+    s: (6 + Math.random() * 8) * devicePixelRatio, r: Math.random() * 6, vr: (Math.random() - .5) * .4, c: colors[k % colors.length] });
   var t0 = performance.now();
   (function frame(t) {
     cx.clearRect(0, 0, W, H);
@@ -351,38 +431,35 @@ function confetti(count) {
   })(t0);
 }
 
-// ---------------------------------------------------------------- 送信
-// 待たせない：押したらすぐ完了画面、裏で送る。届かなかったぶんは端末に残し、次に開いたとき送り直す。
-// 同じ紙を二重に送っても、取り込み側が最後の 1 件だけ使う。
+// ================================================================ 送信（待たせない・届かなければ端末に残して送り直す）
 var PENDING = "wordcheck_pending";
-function pending() { try { return JSON.parse(localStorage.getItem(PENDING) || "[]"); } catch (e) { return []; } }
-function savePending(q) { try { localStorage.setItem(PENDING, JSON.stringify(q)); } catch (e) {} }
+function pending() { return store(PENDING) || []; }
 function flush() {
   pending().forEach(function (item) {
-    // no-cors：返事は読めないが Apps Script には届く。ネットにつながらないときだけ失敗になる
-    fetch(API, { method: "POST", mode: "no-cors", keepalive: true, body: JSON.stringify({ s: item.s, miss: item.miss }) })
-      .then(function () { savePending(pending().filter(function (x) { return x.t !== item.t; })); })
+    fetch(API, { method: "POST", mode: "no-cors", keepalive: true, body: JSON.stringify(item.body) })
+      .then(function () { store(PENDING, pending().filter(function (x) { return x.t !== item.t; })); })
       .catch(function () {});
   });
 }
-$("send").onclick = function () {
-  var miss = D.words.filter(function (w, k) { return res[k]; }).map(function (w) { return w[0]; });
-  savePending(pending().concat([{ s: SID, miss: miss, t: Date.now() }]));
-  flush(); buzz(30);
-  screen("done"); $("count").textContent = "";
-  $("doneSub").textContent = miss.length ? ("ミス " + miss.length + " 語。次の宿題で多めに出るよ") : "全部覚えてた。最強";
-  confetti(140);
-};
-flush();   // 前に届かなかったぶんがあれば送り直す
-
-// ---------------------------------------------------------------- 読み込み
-// 紙ごとのデータは暗号化してこのサイトの d/<シートID>.txt に置いてある。鍵は URL の # の後ろ（サーバーに送られない）。
-// 鍵が無い古い QR や、読めなかったときは Apps Script から取る。
-function b64u(s) {
-  s = s.replace(/-/g, "+").replace(/_/g, "/"); while (s.length % 4) s += "=";
-  var b = atob(s), u = new Uint8Array(b.length); for (var j = 0; j < b.length; j++) u[j] = b.charCodeAt(j); return u;
+// セッションを送る。結果画面を離れるとき（もう一周・一覧・閉じる）に 1 回だけ
+function commit() {
+  if (!S || S.sent || S.i < S.idx.length) return;
+  S.sent = true;
+  var bk = P.days[S.di].books[S.bi], body;
+  if (PERIOD) {
+    body = { v: 2, p: SID, id: S.id, day: S.di + 1, b: bk.b, round: S.round, mode: S.mode, started: S.started, ended: Date.now(), undo: S.undo,
+      items: S.idx.map(function (wi, k) { var w = bk.words[wi]; return [w[0], S.res[k] ? 0 : 1, S.times[k] ? S.times[k][0] : 0, S.times[k] ? S.times[k][1] : 0]; }) };
+  } else {
+    body = { s: SID, miss: missIdx().map(function (wi) { return bk.words[wi][0]; }) };
+  }
+  store(PENDING, pending().concat([{ t: Date.now() + Math.random(), body: body }]));
+  flush();
 }
-var KEY = new URLSearchParams(location.hash.slice(1)).get("k") || "";
+document.addEventListener("visibilitychange", function () { if (document.visibilityState === "hidden") commit(); });
+flush();
+
+// ================================================================ 読み込み
+function b64u(s) { s = s.replace(/-/g, "+").replace(/_/g, "/"); while (s.length % 4) s += "="; var b = atob(s), u = new Uint8Array(b.length); for (var j = 0; j < b.length; j++) u[j] = b.charCodeAt(j); return u; }
 function loadLocal() {
   return fetch("d/" + SID + ".txt")
     .then(function (r) { if (!r.ok) throw new Error("nf"); return r.text(); })
@@ -393,19 +470,20 @@ function loadLocal() {
     })
     .then(function (buf) { return JSON.parse(new TextDecoder().decode(buf)); });
 }
-function loadApi() {
-  return fetch(API + "?s=" + SID).then(function (r) { return r.json(); })
-    .then(function (d) { if (!d.ok) throw new Error("nf"); return d; });
-}
+function loadApi() { return fetch(API + "?s=" + SID).then(function (r) { return r.json(); }).then(function (d) { if (!d.ok) throw new Error("nf"); return d; }); }
 if (!/^[0-9a-z]{23}$/.test(SID)) {
-  show("この紙のデータが見つからない。先生に知らせてね");
+  show("この QR のデータが見つからない。先生に知らせてね");
 } else {
   screen("msg");
-  (KEY ? loadLocal().catch(loadApi) : loadApi())
-    .then(function (d) { D = d; $("title").textContent = d.title; screen("swipe"); render(); })
+  (KEY ? loadLocal().catch(function (e) { if (PERIOD) throw e; return loadApi(); }) : loadApi())
+    .then(function (d) {
+      if (PERIOD) { P = d; hub(); return; }
+      // 紙ごとの QR：1 日・1 冊だけのデータとして扱う
+      P = { days: [{ date: "", books: [{ b: SID.charAt(6), label: d.title, words: d.words }] }] };
+      start(0, 0, "all");
+    })
     .catch(function (e) {
-      show(e && e.message === "nf" ? "この紙のデータが見つからない。先生に知らせてね"
-                                    : "読み込めなかった。電波のいい所でもう一回開いてね");
+      show(e && e.message === "nf" ? "この QR のデータが見つからない。先生に知らせてね" : "読み込めなかった。電波のいい所でもう一回開いてね");
     });
 }
 </script>
