@@ -31,10 +31,12 @@ header{padding:calc(12px + env(safe-area-inset-top)) 18px 6px}
 #title{flex:1;font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #count{font-size:15px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--sub)}
 
-/* 進み具合：細いバーと ○✕ の数 */
+/* 進み具合：○＝緑が左から、✕＝赤が右から（本人希望 2026-09-16） */
 #progWrap{display:none;margin-top:8px}
-.bar{height:6px;border-radius:3px;background:var(--line);overflow:hidden}
-#barFill{height:100%;width:0;background:var(--acc)}
+.bar{position:relative;height:8px;border-radius:4px;background:var(--line);overflow:hidden}
+.bar>div{position:absolute;top:0;bottom:0;width:0;transition:width .2s ease-out}
+#barOk{left:0;background:var(--ok)}
+#barNg{right:0;background:var(--ng)}
 .nums{display:flex;justify-content:space-between;margin-top:6px;font-size:14px;font-weight:600;font-variant-numeric:tabular-nums}
 #nOk{color:var(--ok)}#nNg{color:var(--ng)}
 
@@ -112,7 +114,7 @@ button.w.on .t{color:var(--ng)}
 <header>
  <div class="top"><button id="back">← 一覧</button><div id="title">単語チェック</div><div id="count"></div></div>
  <div id="progWrap">
-  <div class="bar"><div id="barFill"></div></div>
+  <div class="bar"><div id="barOk"></div><div id="barNg"></div></div>
   <div class="nums"><span id="nOk">○ 0</span><span id="nNg">✕ 0</span></div>
  </div>
 </header>
@@ -282,7 +284,7 @@ function counts() { var ok = 0, ng = 0; for (var j = 0; j < S.i; j++) { if (S.re
 function progress() {
   var n = S.idx.length, c = counts();
   $("count").textContent = Math.min(S.i + 1, n) + " / " + n;
-  $("barFill").style.width = (S.i / n * 100) + "%";
+  $("barOk").style.width = (c[0] / n * 100) + "%"; $("barNg").style.width = (c[1] / n * 100) + "%";
   $("nOk").textContent = "○ " + c[0]; $("nNg").textContent = "✕ " + c[1];
 }
 function setButtons() { $("bng").disabled = $("bok").disabled = !S.flipped; $("bundo").disabled = S.i === 0; }
