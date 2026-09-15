@@ -140,18 +140,41 @@ $("send").onclick = function () {
 };
 flush();   // 前に届かなかったぶんがあれば送り直す
 
+// 読み込み（2026-09-15：速さのため）
+// 紙ごとのデータは暗号化してこのサイトの d/<シートID>.txt に置いてある。鍵は QR のアドレスの # の後ろ（サーバーに送られない）。
+// 鍵が無い古い QR や、読めなかったときは Apps Script から取る。
+function b64u(s) {
+  s = s.replace(/-/g, "+").replace(/_/g, "/"); while (s.length % 4) s += "=";
+  var b = atob(s), u = new Uint8Array(b.length); for (var j = 0; j < b.length; j++) u[j] = b.charCodeAt(j); return u;
+}
+var KEY = new URLSearchParams(location.hash.slice(1)).get("k") || "";
+function loadLocal() {
+  return fetch("d/" + SID + ".txt")
+    .then(function (r) { if (!r.ok) throw new Error("nf"); return r.text(); })
+    .then(function (t) {
+      var raw = b64u(t.trim());
+      return crypto.subtle.importKey("raw", b64u(KEY), "AES-GCM", false, ["decrypt"])
+        .then(function (k) { return crypto.subtle.decrypt({ name: "AES-GCM", iv: raw.slice(0, 12) }, k, raw.slice(12)); });
+    })
+    .then(function (buf) { return JSON.parse(new TextDecoder().decode(buf)); });
+}
+function loadApi() {
+  return fetch(API + "?s=" + SID).then(function (r) { return r.json(); })
+    .then(function (d) { if (!d.ok) throw new Error("nf"); return d; });
+}
 if (!/^[0-9a-z]{23}$/.test(SID)) {
   show("この紙のデータが見つかりません。先生に知らせてください。");
 } else {
   $("msg").style.display = "block";
-  fetch(API + "?s=" + SID)
-    .then(function (r) { return r.json(); })
+  (KEY ? loadLocal().catch(loadApi) : loadApi())
     .then(function (d) {
-      if (!d.ok) { show("この紙のデータが見つかりません。先生に知らせてください。"); return; }
       D = d; $("title").textContent = d.title;
       $("msg").style.display = "none"; $("swipe").style.display = "flex"; render();
     })
-    .catch(function () { show("読み込めませんでした。電波のよい所でもう一度開いてください。"); });
+    .catch(function (e) {
+      show(e && e.message === "nf" ? "この紙のデータが見つかりません。先生に知らせてください。"
+                                    : "読み込めませんでした。電波のよい所でもう一度開いてください。");
+    });
 }
 </script>
 </body>
