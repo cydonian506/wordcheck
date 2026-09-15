@@ -2,131 +2,272 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
 <meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#0b0a14">
 <title>単語チェック</title>
 <!--
-  単語チェック：宿題の紙の QR から開く入力ページ。
-  1 語ずつカードで出し、右フリック＝覚えてた、左フリック＝間違えた。最後に一覧で直して送る。
-  このページには単語も氏名も入っていない。紙ごとの単語は ?s=<シートID> で API から取る。
+  単語チェック：宿題の解答の紙の QR から開く入力ページ。
+  1 語ずつカードで出し、右フリック＝覚えてた、左フリック＝ミス。最後に一覧で直して送る。
+  2026-09-15 本人希望で「ドパガキ向け」の派手なデザインに作り直した（進捗バー・コンボ・結果演出・紙吹雪）。
+  このページには単語も氏名も入っていない。紙ごとの単語は暗号化して d/<シートID>.txt に置き、鍵は URL の # の後ろ。
 -->
 <style>
-body{margin:0;font-family:-apple-system,"Hiragino Sans",sans-serif;background:#f6f6f4;color:#111;overscroll-behavior:none}
-header{background:#fff;padding:12px 14px;border-bottom:1px solid #ddd}
-h1{font-size:17px;margin:0 0 4px}p.note{font-size:13px;margin:0;color:#555}
-#msg{display:none;text-align:center;font-size:17px;padding:40px 16px;color:#333}
-#swipe{display:none;flex-direction:column;align-items:center;padding:16px 14px 24px}
-#prog{font-size:14px;color:#555;margin-bottom:10px}
-#stage{position:relative;width:100%;max-width:360px;height:280px}
-.card{position:absolute;inset:0;background:#fff;border:1.5px solid #ccc;border-radius:18px;
- box-shadow:0 4px 14px rgba(0,0,0,.08);display:flex;flex-direction:column;align-items:center;
- justify-content:center;padding:20px;touch-action:none;user-select:none;-webkit-user-select:none}
-.card .no{font-size:15px;color:#888;margin-bottom:10px;position:relative}
-.card .word{font-size:30px;font-weight:700;text-align:center;word-break:break-word;position:relative}
-.card .pos{font-size:13px;color:#fff;background:#666;border-radius:6px;padding:2px 8px;margin-top:10px;position:relative}
-.card .mean{font-size:17px;color:#333;text-align:center;margin-top:10px;line-height:1.5;position:relative}
-button.w span.m{display:block;font-size:12px;color:#666;margin-top:2px}
+:root{--bg:#0b0a14;--ink:#f4f3ff;--sub:#a3a0c2;--ok:#27e39a;--ng:#ff3d71;--a1:#ff4fd8;--a2:#ffb400;--a3:#5b8cff}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{margin:0;font-family:-apple-system,"Hiragino Sans","Hiragino Kaku Gothic ProN",sans-serif;color:var(--ink);
+ background:var(--bg);overscroll-behavior:none;overflow-x:hidden}
+body:before{content:"";position:fixed;inset:-20%;z-index:-1;
+ background:radial-gradient(40% 35% at 15% 10%,rgba(255,79,216,.35),transparent 70%),
+ radial-gradient(45% 40% at 90% 25%,rgba(91,140,255,.30),transparent 70%),
+ radial-gradient(50% 45% at 50% 100%,rgba(255,180,0,.22),transparent 70%);
+ animation:drift 14s ease-in-out infinite alternate}
+@keyframes drift{to{transform:translate3d(4%,-3%,0) rotate(8deg)}}
+
+header{padding:calc(14px + env(safe-area-inset-top)) 18px 8px}
+.top{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+#title{font-size:14px;font-weight:700;color:var(--sub);letter-spacing:.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#count{font-size:15px;font-weight:900;font-variant-numeric:tabular-nums}
+.bar{height:10px;border-radius:99px;background:rgba(255,255,255,.1);margin-top:8px;overflow:hidden}
+#fill{height:100%;width:0;border-radius:99px;background:linear-gradient(90deg,var(--a1),var(--a2));
+ box-shadow:0 0 14px rgba(255,79,216,.7);transition:width .3s cubic-bezier(.2,.9,.3,1.3)}
+
+#msg{display:none;text-align:center;font-size:18px;font-weight:700;padding:80px 24px;color:var(--sub)}
+
+#swipe{display:none;flex-direction:column;align-items:center;padding:6px 18px 24px}
+#combo{height:38px;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:900;
+ font-style:italic;letter-spacing:.04em;background:linear-gradient(90deg,var(--a2),var(--a1));
+ -webkit-background-clip:text;background-clip:text;color:transparent;opacity:0}
+#combo.pop{animation:pop .5s cubic-bezier(.2,1.6,.4,1)}
+@keyframes pop{0%{transform:scale(.4);opacity:0}50%{transform:scale(1.25);opacity:1}100%{transform:scale(1);opacity:1}}
+#stage{position:relative;width:100%;max-width:380px;height:min(58vh,400px)}
+.card{position:absolute;inset:0;border-radius:30px;background:#fff;color:#12101f;
+ box-shadow:0 30px 60px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.08);
+ display:flex;flex-direction:column;align-items:center;justify-content:center;padding:26px 22px;
+ touch-action:none;user-select:none;-webkit-user-select:none;will-change:transform;overflow:hidden}
+.card.enter{animation:enter .28s cubic-bezier(.2,1.3,.4,1)}
+@keyframes enter{from{transform:scale(.9) translateY(14px);opacity:.3}to{transform:none;opacity:1}}
+.card .glow{position:absolute;inset:0;border-radius:30px;opacity:0;pointer-events:none}
+.card .gng{background:linear-gradient(135deg,rgba(255,61,113,.55),rgba(255,79,216,.25))}
+.card .gok{background:linear-gradient(135deg,rgba(39,227,154,.55),rgba(91,140,255,.2))}
 .card .mark{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
- font-size:170px;font-weight:700;line-height:1;opacity:0;pointer-events:none}
-.card .ng{color:#d33}.card .ok{color:#1a8f3c}
-.hint{display:flex;justify-content:space-between;width:100%;max-width:360px;font-size:13px;color:#777;margin-top:10px}
-.btns{display:flex;gap:10px;margin-top:14px;width:100%;max-width:360px}
-.btns button{flex:1;font-size:18px;padding:14px 0;border-radius:12px;border:2px solid;background:#fff}
-#bng{color:#d33;border-color:#d33}#bok{color:#1a8f3c;border-color:#1a8f3c}#bundo{flex:0 0 64px;color:#555;border-color:#bbb}
-#review{display:none;padding:12px 14px 110px}#review p{font-size:14px;margin:0 0 10px;color:#333}
+ font-size:190px;font-weight:900;line-height:1;opacity:0;pointer-events:none;
+ text-shadow:0 0 30px rgba(255,255,255,.9)}
+.card .mng{color:var(--ng)}.card .mok{color:#12c081}
+.card .no{position:relative;font-size:13px;font-weight:800;color:#8b87a8;letter-spacing:.08em}
+.card .word{position:relative;font-size:clamp(30px,10vw,44px);font-weight:900;letter-spacing:-.01em;
+ text-align:center;word-break:break-word;margin-top:8px;line-height:1.1}
+.card .pos{position:relative;margin-top:14px;font-size:13px;font-weight:900;color:#fff;padding:4px 12px;border-radius:99px;
+ background:linear-gradient(90deg,var(--a3),var(--a1))}
+.card .mean{position:relative;margin-top:14px;font-size:18px;font-weight:700;color:#3a3752;text-align:center;line-height:1.55}
+.hint{display:flex;justify-content:space-between;width:100%;max-width:380px;margin-top:12px;
+ font-size:12px;font-weight:800;color:var(--sub);letter-spacing:.06em}
+.btns{display:flex;align-items:center;justify-content:center;gap:26px;margin-top:14px}
+.round{border:0;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:900;color:#fff;
+ transition:transform .12s}
+.round:active{transform:scale(.88)}
+#bng,#bok{width:76px;height:76px;font-size:36px}
+#bng{background:linear-gradient(135deg,#ff3d71,#ff4fd8);box-shadow:0 10px 26px rgba(255,61,113,.5)}
+#bok{background:linear-gradient(135deg,#27e39a,#26c6ff);box-shadow:0 10px 26px rgba(39,227,154,.45)}
+#bundo{width:52px;height:52px;font-size:22px;background:rgba(255,255,255,.12);color:var(--ink)}
+
+#review{display:none;padding:10px 18px 130px}
+.result{display:flex;align-items:center;gap:18px;margin:6px 0 18px}
+.ring{--p:0;width:118px;height:118px;border-radius:50%;flex:none;display:grid;place-items:center;
+ background:conic-gradient(var(--ok) calc(var(--p)*1%),rgba(255,255,255,.1) 0)}
+.ring>div{width:94px;height:94px;border-radius:50%;background:var(--bg);display:grid;place-items:center;text-align:center}
+#score{font-size:30px;font-weight:900;font-variant-numeric:tabular-nums;line-height:1}
+#outof{font-size:12px;color:var(--sub);font-weight:800}
+#rank{font-size:40px;font-weight:900;line-height:1;background:linear-gradient(90deg,var(--a2),var(--a1));
+ -webkit-background-clip:text;background-clip:text;color:transparent}
+#rankSub{font-size:14px;font-weight:700;color:var(--sub);margin-top:6px}
+.lead{font-size:13px;font-weight:800;color:var(--sub);margin:0 0 10px;letter-spacing:.04em}
 #list{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
-button.w{display:flex;gap:8px;align-items:center;text-align:left;font-size:16px;padding:12px 10px;
- border:1.5px solid #ccc;border-radius:10px;background:#fff;color:#111;min-height:50px;word-break:break-all}
-button.w span.n{font-size:13px;color:#777;min-width:22px}
-button.w.on{background:#ffe3e3;border-color:#d33;color:#900}
-footer{display:none;position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid #ddd;padding:12px 14px}
-#send{width:100%;font-size:18px;padding:15px;border:0;border-radius:10px;background:#1a5fd0;color:#fff}
-#send:disabled{background:#999}
+button.w{display:flex;flex-direction:column;align-items:flex-start;text-align:left;padding:10px 12px;border-radius:14px;
+ border:1.5px solid rgba(255,255,255,.12);background:rgba(255,255,255,.06);color:var(--ink);min-height:52px;word-break:break-all}
+button.w .n{font-size:11px;font-weight:800;color:var(--sub)}
+button.w .t{font-size:16px;font-weight:800;margin-top:2px}
+button.w.on{background:linear-gradient(135deg,rgba(255,61,113,.35),rgba(255,79,216,.2));border-color:var(--ng)}
+footer{display:none;position:fixed;left:0;right:0;bottom:0;padding:14px 18px calc(14px + env(safe-area-inset-bottom));
+ background:linear-gradient(to top,var(--bg) 60%,transparent)}
+#send{width:100%;border:0;border-radius:99px;padding:18px;font-size:19px;font-weight:900;color:#fff;letter-spacing:.04em;
+ background:linear-gradient(90deg,var(--a1),var(--a2));box-shadow:0 12px 30px rgba(255,79,216,.45)}
+#send:active{transform:scale(.97)}
+
+#done{display:none;min-height:70vh;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px}
+#done .big{font-size:48px;font-weight:900;background:linear-gradient(90deg,var(--ok),var(--a3));
+ -webkit-background-clip:text;background-clip:text;color:transparent}
+#done .small{margin-top:10px;font-size:16px;font-weight:700;color:var(--sub)}
+canvas#fx{position:fixed;inset:0;pointer-events:none;z-index:9}
 </style>
 </head>
 <body>
-<header><h1 id="title">単語チェック</h1><p class="note">答え合わせのあと、1 語ずつフリック。右＝覚えてた、左＝間違えた。</p></header>
+<canvas id="fx"></canvas>
+<header>
+ <div class="top"><div id="title">単語チェック</div><div id="count"></div></div>
+ <div class="bar"><div id="fill"></div></div>
+</header>
 <div id="msg">読み込み中…</div>
-<div id="swipe"><div id="prog"></div><div id="stage"></div>
-<div class="hint"><span>← 間違えた</span><span>覚えてた →</span></div>
-<div class="btns"><button id="bng">✕ 間違い</button><button id="bundo">↶</button><button id="bok">○ 覚えてた</button></div></div>
-<div id="review"><p>間違えた語は赤。タップで直せる。よければ送信。</p><div id="list"></div></div>
+
+<div id="swipe">
+ <div id="combo"></div>
+ <div id="stage"></div>
+ <div class="hint"><span>← ミス</span><span>覚えてた →</span></div>
+ <div class="btns">
+  <button class="round" id="bng" aria-label="ミス">✕</button>
+  <button class="round" id="bundo" aria-label="ひとつ戻す">↶</button>
+  <button class="round" id="bok" aria-label="覚えてた">○</button>
+ </div>
+</div>
+
+<div id="review">
+ <div class="result">
+  <div class="ring" id="ring"><div><div><div id="score">0</div><div id="outof"></div></div></div></div>
+  <div><div id="rank"></div><div id="rankSub"></div></div>
+ </div>
+ <p class="lead">ミスした語は赤。タップで直せる</p>
+ <div id="list"></div>
+</div>
+
+<div id="done"><div class="big">送信完了</div><div class="small" id="doneSub"></div></div>
 <footer><button id="send"></button></footer>
+
 <script>
-var API = "https://script.google.com/macros/s/AKfycbyzqMMPHQpZS9j8c3MFReDbogX0I0Rb4MFqFcuArFbUiCckxR9yFr_DtTOpj7zN7CRHYw/exec";   // Apps Script ウェブアプリ（/exec）。フォーム/コード.gs
+var API = "https://script.google.com/macros/s/AKfycbyzqMMPHQpZS9j8c3MFReDbogX0I0Rb4MFqFcuArFbUiCckxR9yFr_DtTOpj7zN7CRHYw/exec";
 var SID = (new URLSearchParams(location.search).get("s") || "").trim().toLowerCase();
 var D = null, i = 0, res = [], busy = false;
 var $ = function (id) { return document.getElementById(id); };
 function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
-function show(text) {
-  ["swipe", "review"].forEach(function (id) { $(id).style.display = "none"; });
-  document.querySelector("footer").style.display = "none";
-  var m = $("msg"); m.style.display = "block"; m.textContent = text;
+function screen(id) {
+  ["msg", "swipe", "review", "done"].forEach(function (k) { $(k).style.display = "none"; });
+  document.querySelector("footer").style.display = id === "review" ? "block" : "none";
+  $(id).style.display = (id === "swipe" || id === "done") ? "flex" : "block";
 }
+function show(text) { screen("msg"); $("msg").textContent = text; }
+function buzz(ms) { try { if (navigator.vibrate) navigator.vibrate(ms); } catch (e) {} }
 
+// ---------------------------------------------------------------- カード
+function progress() {
+  var n = D.words.length;
+  $("count").textContent = Math.min(i + 1, n) + " / " + n;
+  $("fill").style.width = (i / n * 100) + "%";
+}
+function streak() { var k = 0; for (var j = i - 1; j >= 0 && res[j] === false; j--) k++; return k; }
+function comboShow() {
+  var k = streak(), c = $("combo");
+  if (k >= 3) { c.textContent = "COMBO ×" + k; c.classList.remove("pop"); void c.offsetWidth; c.classList.add("pop"); c.style.opacity = 1; }
+  else c.style.opacity = 0;
+}
 function render() {
   var stage = $("stage"); stage.innerHTML = "";
+  progress();
   if (i >= D.words.length) { finish(); return; }
-  $("prog").textContent = (i + 1) + " / " + D.words.length;
-  var w = D.words[i], card = el("div", "card");
-  card.appendChild(el("div", "mark ng", "✕")); card.appendChild(el("div", "mark ok", "○"));
-  // w = [紙の No.（送信用）, 単語, 日本語訳, 品詞（推定）, 単語帳の番号]（古い紙のデータは後ろが無い）
-  card.appendChild(el("div", "no", "No." + (w[4] || w[0]))); card.appendChild(el("div", "word", w[1]));
+  // w = [紙の No.（送信用）, 単語, 日本語訳, 品詞（推定）, 単語帳の番号]
+  var w = D.words[i], card = el("div", "card enter");
+  card.appendChild(el("div", "glow gng")); card.appendChild(el("div", "glow gok"));
+  card.appendChild(el("div", "mark mng", "✕")); card.appendChild(el("div", "mark mok", "○"));
+  card.appendChild(el("div", "no", "No." + (w[4] || w[0])));
+  card.appendChild(el("div", "word", w[1]));
   if (w[3]) card.appendChild(el("div", "pos", w[3]));
   if (w[2]) card.appendChild(el("div", "mean", w[2].split("／").join("、")));
   stage.appendChild(card);
   var sx = null, dx = 0;
-  card.onpointerdown = function (e) { sx = e.clientX; dx = 0; card.setPointerCapture(e.pointerId); card.style.transition = "none"; };
+  card.onpointerdown = function (e) { sx = e.clientX; dx = 0; card.setPointerCapture(e.pointerId); card.style.transition = "none"; card.classList.remove("enter"); };
   card.onpointermove = function (e) {
     if (sx === null) return; dx = e.clientX - sx;
-    card.style.transform = "translateX(" + dx + "px) rotate(" + (dx / 20) + "deg)"; tint(card, dx / 110);
+    card.style.transform = "translateX(" + dx + "px) rotate(" + (dx / 16) + "deg)"; tint(card, dx / 110);
   };
   card.onpointerup = card.onpointercancel = function () {
     if (sx === null) return; sx = null;
     if (dx > 90) decide(false, 1); else if (dx < -90) decide(true, -1);
-    else { card.style.transition = "transform .2s,background-color .2s"; card.style.transform = ""; tint(card, 0); }
+    else { card.style.transition = "transform .35s cubic-bezier(.2,1.5,.4,1)"; card.style.transform = ""; tint(card, 0); }
   };
 }
-// フリックの向きの色を少しずつ帯び、○✕ が浮かぶ
+// 向きの色を少しずつ帯び、○✕ が浮かぶ
 function tint(card, r) {
   r = Math.max(-1, Math.min(1, r)); var a = Math.abs(r);
-  card.style.backgroundColor = r < 0 ? "rgb(255," + Math.round(255 - 50 * a) + "," + Math.round(255 - 50 * a) + ")"
-    : "rgb(" + Math.round(255 - 45 * a) + ",255," + Math.round(255 - 40 * a) + ")";
-  card.style.borderColor = a < .05 ? "#ccc" : (r < 0 ? "#d33" : "#1a8f3c");
-  card.querySelector(".ng").style.opacity = r < 0 ? a * .85 : 0;
-  card.querySelector(".ok").style.opacity = r > 0 ? a * .85 : 0;
+  card.querySelector(".gng").style.opacity = r < 0 ? a : 0;
+  card.querySelector(".gok").style.opacity = r > 0 ? a : 0;
+  card.querySelector(".mng").style.opacity = r < 0 ? a * .95 : 0;
+  card.querySelector(".mok").style.opacity = r > 0 ? a * .95 : 0;
 }
 function decide(miss, dir) {
   if (busy || i >= D.words.length) return; busy = true; res[i] = miss;
-  var card = $("stage").firstChild; tint(card, dir); card.style.transition = "transform .3s";
-  card.style.transform = "translateX(" + (dir * 500) + "px) rotate(" + (dir * 30) + "deg)";
-  setTimeout(function () { busy = false; i++; render(); }, 230);
+  buzz(miss ? [18, 40, 18] : 12);
+  var card = $("stage").firstChild; tint(card, dir); card.style.transition = "transform .32s cubic-bezier(.4,0,.2,1)";
+  card.style.transform = "translateX(" + (dir * 520) + "px) rotate(" + (dir * 32) + "deg)";
+  setTimeout(function () { busy = false; i++; comboShow(); render(); }, 220);
 }
 $("bng").onclick = function () { decide(true, -1); };
 $("bok").onclick = function () { decide(false, 1); };
-$("bundo").onclick = function () { if (i > 0 && !busy) { i--; render(); } };
+$("bundo").onclick = function () { if (i > 0 && !busy) { i--; res.length = i; comboShow(); render(); } };
 
-function label() { var k = res.filter(Boolean).length; $("send").textContent = k ? ("間違い " + k + " 語で送信") : "全部覚えてた で送信"; }
+// ---------------------------------------------------------------- 結果
+function label() {
+  var k = res.filter(Boolean).length;
+  $("send").textContent = k ? ("ミス " + k + " 語で送信") : "全部覚えてた！ 送信";
+}
+function rankOf(p) {
+  if (p >= 100) return ["神", "パーフェクト"];
+  if (p >= 90) return ["えぐい", "ほぼ完璧"];
+  if (p >= 75) return ["ナイス", "ミスだけ見直そ"];
+  if (p >= 50) return ["伸びしろ", "ミスをもう一回"];
+  return ["ここから", "ミスだけ覚えよ"];
+}
+function countUp(to, n) {
+  var t0 = null;
+  function step(t) {
+    if (!t0) t0 = t; var k = Math.min(1, (t - t0) / 700), e = 1 - Math.pow(1 - k, 3);
+    $("score").textContent = Math.round(to * e);
+    $("ring").style.setProperty("--p", (to / n * 100 * e).toFixed(1));
+    if (k < 1) requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
 function finish() {
-  $("swipe").style.display = "none"; $("review").style.display = "block"; document.querySelector("footer").style.display = "block";
+  screen("review"); $("combo").style.opacity = 0; $("count").textContent = "結果";
+  $("fill").style.width = "100%";
+  var n = D.words.length, ok = res.filter(function (x) { return x === false; }).length, p = ok / n * 100;
+  var r = rankOf(p); $("rank").textContent = r[0]; $("rankSub").textContent = r[1]; $("outof").textContent = "/ " + n;
+  countUp(ok, n);
+  if (p >= 75) confetti(p >= 90 ? 180 : 90);
   var list = $("list"); list.innerHTML = "";
   D.words.forEach(function (w, k) {
-    var b = el("button", "w" + (res[k] ? " on" : "")); b.appendChild(el("span", "n", w[4] || w[0])); b.appendChild(el("span", "", w[1]));
-    b.onclick = function () { res[k] = !res[k]; b.classList.toggle("on", res[k]); label(); };
+    var b = el("button", "w" + (res[k] ? " on" : ""));
+    b.appendChild(el("span", "n", "No." + (w[4] || w[0]))); b.appendChild(el("span", "t", w[1]));
+    b.onclick = function () { res[k] = !res[k]; b.classList.toggle("on", res[k]); buzz(8); label(); };
     list.appendChild(b);
   });
   label();
 }
-// 送信は待たせない（本人希望 2026-09-15：送信中が長くてストレス）。
-// 押したらすぐ「送信しました」を出し、裏で送る。届かなかったぶんは端末に残し、次に開いたとき送り直す。
+
+// ---------------------------------------------------------------- 紙吹雪
+function confetti(count) {
+  var cv = $("fx"), cx = cv.getContext("2d"), W = cv.width = innerWidth * devicePixelRatio, H = cv.height = innerHeight * devicePixelRatio;
+  var colors = ["#ff4fd8", "#ffb400", "#27e39a", "#5b8cff", "#ffffff"], ps = [];
+  for (var k = 0; k < count; k++) ps.push({ x: W / 2, y: H * .35, vx: (Math.random() - .5) * 26 * devicePixelRatio,
+    vy: (-Math.random() * 22 - 6) * devicePixelRatio, s: (6 + Math.random() * 8) * devicePixelRatio,
+    r: Math.random() * 6, vr: (Math.random() - .5) * .4, c: colors[k % colors.length] });
+  var t0 = performance.now();
+  (function frame(t) {
+    cx.clearRect(0, 0, W, H);
+    ps.forEach(function (q) { q.vy += .7 * devicePixelRatio; q.vx *= .99; q.x += q.vx; q.y += q.vy; q.r += q.vr;
+      cx.save(); cx.translate(q.x, q.y); cx.rotate(q.r); cx.fillStyle = q.c; cx.fillRect(-q.s / 2, -q.s / 4, q.s, q.s / 2); cx.restore(); });
+    if (t - t0 < 2200) requestAnimationFrame(frame); else cx.clearRect(0, 0, W, H);
+  })(t0);
+}
+
+// ---------------------------------------------------------------- 送信
+// 待たせない：押したらすぐ完了画面、裏で送る。届かなかったぶんは端末に残し、次に開いたとき送り直す。
 // 同じ紙を二重に送っても、取り込み側が最後の 1 件だけ使う。
 var PENDING = "wordcheck_pending";
 function pending() { try { return JSON.parse(localStorage.getItem(PENDING) || "[]"); } catch (e) { return []; } }
 function savePending(q) { try { localStorage.setItem(PENDING, JSON.stringify(q)); } catch (e) {} }
 function flush() {
   pending().forEach(function (item) {
-    // no-cors：返事は読めないが、Apps Script には届く。ネットにつながらないときだけ失敗になる
+    // no-cors：返事は読めないが Apps Script には届く。ネットにつながらないときだけ失敗になる
     fetch(API, { method: "POST", mode: "no-cors", keepalive: true, body: JSON.stringify({ s: item.s, miss: item.miss }) })
       .then(function () { savePending(pending().filter(function (x) { return x.t !== item.t; })); })
       .catch(function () {});
@@ -135,13 +276,15 @@ function flush() {
 $("send").onclick = function () {
   var miss = D.words.filter(function (w, k) { return res[k]; }).map(function (w) { return w[0]; });
   savePending(pending().concat([{ s: SID, miss: miss, t: Date.now() }]));
-  flush();
-  show("送信しました（間違い " + miss.length + " 語）。おつかれさま。");
+  flush(); buzz(30);
+  screen("done"); $("count").textContent = "";
+  $("doneSub").textContent = miss.length ? ("ミス " + miss.length + " 語。次の宿題で多めに出るよ") : "全部覚えてた。最強";
+  confetti(140);
 };
 flush();   // 前に届かなかったぶんがあれば送り直す
 
-// 読み込み（2026-09-15：速さのため）
-// 紙ごとのデータは暗号化してこのサイトの d/<シートID>.txt に置いてある。鍵は QR のアドレスの # の後ろ（サーバーに送られない）。
+// ---------------------------------------------------------------- 読み込み
+// 紙ごとのデータは暗号化してこのサイトの d/<シートID>.txt に置いてある。鍵は URL の # の後ろ（サーバーに送られない）。
 // 鍵が無い古い QR や、読めなかったときは Apps Script から取る。
 function b64u(s) {
   s = s.replace(/-/g, "+").replace(/_/g, "/"); while (s.length % 4) s += "=";
@@ -163,17 +306,14 @@ function loadApi() {
     .then(function (d) { if (!d.ok) throw new Error("nf"); return d; });
 }
 if (!/^[0-9a-z]{23}$/.test(SID)) {
-  show("この紙のデータが見つかりません。先生に知らせてください。");
+  show("この紙のデータが見つからない。先生に知らせてね");
 } else {
-  $("msg").style.display = "block";
+  screen("msg");
   (KEY ? loadLocal().catch(loadApi) : loadApi())
-    .then(function (d) {
-      D = d; $("title").textContent = d.title;
-      $("msg").style.display = "none"; $("swipe").style.display = "flex"; render();
-    })
+    .then(function (d) { D = d; $("title").textContent = d.title; screen("swipe"); render(); })
     .catch(function (e) {
-      show(e && e.message === "nf" ? "この紙のデータが見つかりません。先生に知らせてください。"
-                                    : "読み込めませんでした。電波のよい所でもう一度開いてください。");
+      show(e && e.message === "nf" ? "この紙のデータが見つからない。先生に知らせてね"
+                                    : "読み込めなかった。電波のいい所でもう一回開いてね");
     });
 }
 </script>
