@@ -71,8 +71,8 @@ function render() {
   $("prog").textContent = (i + 1) + " / " + D.words.length;
   var w = D.words[i], card = el("div", "card");
   card.appendChild(el("div", "mark ng", "✕")); card.appendChild(el("div", "mark ok", "○"));
-  card.appendChild(el("div", "no", "No." + w[0])); card.appendChild(el("div", "word", w[1]));
-  // w = [No., 単語, 日本語訳, 品詞]（古い紙のデータは訳・品詞なし）
+  // w = [紙の No.（送信用）, 単語, 日本語訳, 品詞（推定）, 単語帳の番号]（古い紙のデータは後ろが無い）
+  card.appendChild(el("div", "no", "No." + (w[4] || w[0]))); card.appendChild(el("div", "word", w[1]));
   if (w[3]) card.appendChild(el("div", "pos", w[3]));
   if (w[2]) card.appendChild(el("div", "mean", w[2].split("／").join("、")));
   stage.appendChild(card);
@@ -112,7 +112,7 @@ function finish() {
   $("swipe").style.display = "none"; $("review").style.display = "block"; document.querySelector("footer").style.display = "block";
   var list = $("list"); list.innerHTML = "";
   D.words.forEach(function (w, k) {
-    var b = el("button", "w" + (res[k] ? " on" : "")); b.appendChild(el("span", "n", w[0])); b.appendChild(el("span", "", w[1]));
+    var b = el("button", "w" + (res[k] ? " on" : "")); b.appendChild(el("span", "n", w[4] || w[0])); b.appendChild(el("span", "", w[1]));
     b.onclick = function () { res[k] = !res[k]; b.classList.toggle("on", res[k]); label(); };
     list.appendChild(b);
   });
