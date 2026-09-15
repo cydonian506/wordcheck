@@ -118,15 +118,27 @@ function finish() {
   });
   label();
 }
+// 送信は待たせない（本人希望 2026-09-15：送信中が長くてストレス）。
+// 押したらすぐ「送信しました」を出し、裏で送る。届かなかったぶんは端末に残し、次に開いたとき送り直す。
+// 同じ紙を二重に送っても、取り込み側が最後の 1 件だけ使う。
+var PENDING = "wordcheck_pending";
+function pending() { try { return JSON.parse(localStorage.getItem(PENDING) || "[]"); } catch (e) { return []; } }
+function savePending(q) { try { localStorage.setItem(PENDING, JSON.stringify(q)); } catch (e) {} }
+function flush() {
+  pending().forEach(function (item) {
+    // no-cors：返事は読めないが、Apps Script には届く。ネットにつながらないときだけ失敗になる
+    fetch(API, { method: "POST", mode: "no-cors", keepalive: true, body: JSON.stringify({ s: item.s, miss: item.miss }) })
+      .then(function () { savePending(pending().filter(function (x) { return x.t !== item.t; })); })
+      .catch(function () {});
+  });
+}
 $("send").onclick = function () {
-  var s = $("send"); s.disabled = true; s.textContent = "送信中…";
   var miss = D.words.filter(function (w, k) { return res[k]; }).map(function (w) { return w[0]; });
-  // text/plain で送る（Apps Script へのブラウザからの POST はこの形でないと通らない）
-  fetch(API, { method: "POST", body: JSON.stringify({ s: SID, miss: miss }) })
-    .then(function (r) { return r.json(); })
-    .then(function (d) { if (!d.ok) throw new Error("ng"); show("送信しました（間違い " + d.count + " 語）。おつかれさま。"); })
-    .catch(function () { s.disabled = false; label(); alert("送信できませんでした。電波のよい所でもう一度。"); });
+  savePending(pending().concat([{ s: SID, miss: miss, t: Date.now() }]));
+  flush();
+  show("送信しました（間違い " + miss.length + " 語）。おつかれさま。");
 };
+flush();   // 前に届かなかったぶんがあれば送り直す
 
 if (!/^[0-9a-z]{23}$/.test(SID)) {
   show("この紙のデータが見つかりません。先生に知らせてください。");
