@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>単語チェック</title>
+<!--
+  単語チェック：宿題の紙の QR から開く入力ページ。
+  1 語ずつカードで出し、右フリック＝覚えてた、左フリック＝間違えた。最後に一覧で直して送る。
+  このページには単語も氏名も入っていない。紙ごとの単語は ?s=<シートID> で API から取る。
+-->
+<style>
+body{margin:0;font-family:-apple-system,"Hiragino Sans",sans-serif;background:#f6f6f4;color:#111;overscroll-behavior:none}
+header{background:#fff;padding:12px 14px;border-bottom:1px solid #ddd}
+h1{font-size:17px;margin:0 0 4px}p.note{font-size:13px;margin:0;color:#555}
+#msg{display:none;text-align:center;font-size:17px;padding:40px 16px;color:#333}
+#swipe{display:none;flex-direction:column;align-items:center;padding:16px 14px 24px}
+#prog{font-size:14px;color:#555;margin-bottom:10px}
+#stage{position:relative;width:100%;max-width:360px;height:280px}
+.card{position:absolute;inset:0;background:#fff;border:1.5px solid #ccc;border-radius:18px;
+ box-shadow:0 4px 14px rgba(0,0,0,.08);display:flex;flex-direction:column;align-items:center;
+ justify-content:center;padding:20px;touch-action:none;user-select:none;-webkit-user-select:none}
+.card .no{font-size:15px;color:#888;margin-bottom:10px;position:relative}
+.card .word{font-size:30px;font-weight:700;text-align:center;word-break:break-word;position:relative}
+.card .mark{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+ font-size:170px;font-weight:700;line-height:1;opacity:0;pointer-events:none}
+.card .ng{color:#d33}.card .ok{color:#1a8f3c}
+.hint{display:flex;justify-content:space-between;width:100%;max-width:360px;font-size:13px;color:#777;margin-top:10px}
+.btns{display:flex;gap:10px;margin-top:14px;width:100%;max-width:360px}
+.btns button{flex:1;font-size:18px;padding:14px 0;border-radius:12px;border:2px solid;background:#fff}
+#bng{color:#d33;border-color:#d33}#bok{color:#1a8f3c;border-color:#1a8f3c}#bundo{flex:0 0 64px;color:#555;border-color:#bbb}
+#review{display:none;padding:12px 14px 110px}#review p{font-size:14px;margin:0 0 10px;color:#333}
+#list{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+button.w{display:flex;gap:8px;align-items:center;text-align:left;font-size:16px;padding:12px 10px;
+ border:1.5px solid #ccc;border-radius:10px;background:#fff;color:#111;min-height:50px;word-break:break-all}
+button.w span.n{font-size:13px;color:#777;min-width:22px}
+button.w.on{background:#ffe3e3;border-color:#d33;color:#900}
+footer{display:none;position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid #ddd;padding:12px 14px}
+#send{width:100%;font-size:18px;padding:15px;border:0;border-radius:10px;background:#1a5fd0;color:#fff}
+#send:disabled{background:#999}
+</style>
+</head>
+<body>
+<header><h1 id="title">単語チェック</h1><p class="note">答え合わせのあと、1 語ずつフリック。右＝覚えてた、左＝間違えた。</p></header>
+<div id="msg">読み込み中…</div>
+<div id="swipe"><div id="prog"></div><div id="stage"></div>
+<div class="hint"><span>← 間違えた</span><span>覚えてた →</span></div>
+<div class="btns"><button id="bng">✕ 間違い</button><button id="bundo">↶</button><button id="bok">○ 覚えてた</button></div></div>
+<div id="review"><p>間違えた語は赤。タップで直せる。よければ送信。</p><div id="list"></div></div>
+<footer><button id="send"></button></footer>
+<script>
+var API = "https://script.google.com/macros/s/AKfycbyzqMMPHQpZS9j8c3MFReDbogX0I0Rb4MFqFcuArFbUiCckxR9yFr_DtTOpj7zN7CRHYw/exec";   // Apps Script ウェブアプリ（/exec）。フォーム/コード.gs
+var SID = (new URLSearchParams(location.search).get("s") || "").trim().toLowerCase();
+var D = null, i = 0, res = [], busy = false;
+var $ = function (id) { return document.getElementById(id); };
+function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+function show(text) {
+  ["swipe", "review"].forEach(function (id) { $(id).style.display = "none"; });
+  document.querySelector("footer").style.display = "none";
+  var m = $("msg"); m.style.display = "block"; m.textContent = text;
+}
+
+function render() {
+  var stage = $("stage"); stage.innerHTML = "";
+  if (i >= D.words.length) { finish(); return; }
+  $("prog").textContent = (i + 1) + " / " + D.words.length;
+  var w = D.words[i], card = el("div", "card");
+  card.appendChild(el("div", "mark ng", "✕")); card.appendChild(el("div", "mark ok", "○"));
+  card.appendChild(el("div", "no", "No." + w[0])); card.appendChild(el("div", "word", w[1]));
+  stage.appendChild(card);
+  var sx = null, dx = 0;
+  card.onpointerdown = function (e) { sx = e.clientX; dx = 0; card.setPointerCapture(e.pointerId); card.style.transition = "none"; };
+  card.onpointermove = function (e) {
+    if (sx === null) return; dx = e.clientX - sx;
+    card.style.transform = "translateX(" + dx + "px) rotate(" + (dx / 20) + "deg)"; tint(card, dx / 110);
+  };
+  card.onpointerup = card.onpointercancel = function () {
+    if (sx === null) return; sx = null;
+    if (dx > 90) decide(false, 1); else if (dx < -90) decide(true, -1);
+    else { card.style.transition = "transform .2s,background-color .2s"; card.style.transform = ""; tint(card, 0); }
+  };
+}
+// フリックの向きの色を少しずつ帯び、○✕ が浮かぶ
+function tint(card, r) {
+  r = Math.max(-1, Math.min(1, r)); var a = Math.abs(r);
+  card.style.backgroundColor = r < 0 ? "rgb(255," + Math.round(255 - 50 * a) + "," + Math.round(255 - 50 * a) + ")"
+    : "rgb(" + Math.round(255 - 45 * a) + ",255," + Math.round(255 - 40 * a) + ")";
+  card.style.borderColor = a < .05 ? "#ccc" : (r < 0 ? "#d33" : "#1a8f3c");
+  card.querySelector(".ng").style.opacity = r < 0 ? a * .85 : 0;
+  card.querySelector(".ok").style.opacity = r > 0 ? a * .85 : 0;
+}
+function decide(miss, dir) {
+  if (busy || i >= D.words.length) return; busy = true; res[i] = miss;
+  var card = $("stage").firstChild; tint(card, dir); card.style.transition = "transform .3s";
+  card.style.transform = "translateX(" + (dir * 500) + "px) rotate(" + (dir * 30) + "deg)";
+  setTimeout(function () { busy = false; i++; render(); }, 230);
+}
+$("bng").onclick = function () { decide(true, -1); };
+$("bok").onclick = function () { decide(false, 1); };
+$("bundo").onclick = function () { if (i > 0 && !busy) { i--; render(); } };
+
+function label() { var k = res.filter(Boolean).length; $("send").textContent = k ? ("間違い " + k + " 語で送信") : "全部覚えてた で送信"; }
+function finish() {
+  $("swipe").style.display = "none"; $("review").style.display = "block"; document.querySelector("footer").style.display = "block";
+  var list = $("list"); list.innerHTML = "";
+  D.words.forEach(function (w, k) {
+    var b = el("button", "w" + (res[k] ? " on" : "")); b.appendChild(el("span", "n", w[0])); b.appendChild(el("span", "", w[1]));
+    b.onclick = function () { res[k] = !res[k]; b.classList.toggle("on", res[k]); label(); };
+    list.appendChild(b);
+  });
+  label();
+}
+$("send").onclick = function () {
+  var s = $("send"); s.disabled = true; s.textContent = "送信中…";
+  var miss = D.words.filter(function (w, k) { return res[k]; }).map(function (w) { return w[0]; });
+  // text/plain で送る（Apps Script へのブラウザからの POST はこの形でないと通らない）
+  fetch(API, { method: "POST", body: JSON.stringify({ s: SID, miss: miss }) })
+    .then(function (r) { return r.json(); })
+    .then(function (d) { if (!d.ok) throw new Error("ng"); show("送信しました（間違い " + d.count + " 語）。おつかれさま。"); })
+    .catch(function () { s.disabled = false; label(); alert("送信できませんでした。電波のよい所でもう一度。"); });
+};
+
+if (!/^[0-9a-z]{23}$/.test(SID)) {
+  show("この紙のデータが見つかりません。先生に知らせてください。");
+} else {
+  $("msg").style.display = "block";
+  fetch(API + "?s=" + SID)
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      if (!d.ok) { show("この紙のデータが見つかりません。先生に知らせてください。"); return; }
+      D = d; $("title").textContent = d.title;
+      $("msg").style.display = "none"; $("swipe").style.display = "flex"; render();
+    })
+    .catch(function () { show("読み込めませんでした。電波のよい所でもう一度開いてください。"); });
+}
+</script>
+</body>
+</html>
