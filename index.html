@@ -255,20 +255,35 @@ function dueCards(b) {
 }
 
 // ================================================================ 今日の分
-// その日に初めて開いたときに、まだやっていない範囲の語から「残り÷テストまでの日数」をランダムに決めて端末に残す
+// 決め方は left.js（前半で新しい語を出し切る・テスト前日は範囲を 1 周）。新しい語はその日に初めて開いたときに
+// ランダムに決めて端末に残す
+function testRows(bk) { return bk.tn != null ? bk.words.slice(bk.words.length - bk.tn).map(function (w) { return w[5]; }) : bk.words.map(function (w) { return w[5]; }); }
+function phaseToday() { return wcPhase(P.handout, P.test, todayIso()); }
+// 本人決定（2026-09-17）：全部 ○ にするまで終わらない。途中でやめたら、今日最後が ✕ の語は今日の分に残る
+function pendKey() { return "pend:" + ME + ":" + todayIso(); }
+function pendAll() { return store(pendKey()) || {}; }
+function setPend(row, miss) { if (!row) return; var p = pendAll(); if (miss) p[row] = 1; else delete p[row]; store(pendKey(), p); }
+function pendCards(b, skip) { var p = pendAll(); return Object.keys(p).filter(function (r) { return BOOK[r] === b && INDEX[r] && !(skip && skip[r]); }).map(function (r) { return INDEX[r]; }); }
+function withPend(bk, deck) { var inD = {}; deck.forEach(function (e) { inD[e[5]] = 1; }); return pendCards(bk.b, inD).concat(deck); }
 function planKey(bk) { return "day:" + SID + ":" + bk.b + ":" + todayIso(); }
 function todayPlan(bk) {
   var key = planKey(bk), pl = store(key);
   if (!pl) {
-    var all = fsrsAll(), unseen = bk.words.filter(function (w) { return !all[w[5]]; }).map(function (w) { return w[5]; });
-    var left = Math.max(1, days(todayIso(), P.test));   // テストの前日まで。当日・過ぎたら残り全部
-    pl = { rows: shuffle(unseen).slice(0, Math.ceil(unseen.length / left)) };
+    var all = fsrsAll(), ph = phaseToday(), unseen = bk.words.filter(function (w) { return !all[w[5]]; }).map(function (w) { return w[5]; });
+    pl = { rows: ph.kind === "final" ? [] : shuffle(unseen).slice(0, wcFreshCount(unseen.length, ph)) };
     store(key, pl);
   }
   return pl;
 }
 function newToday(bk) { var all = fsrsAll(); return todayPlan(bk).rows.filter(function (r) { return !all[r] && INDEX[r]; }).map(function (r) { return INDEX[r]; }); }
-function todayDeck(bk) { return dueCards(bk.b).concat(newToday(bk)); }
+function todayDeck(bk) { return withPend(bk, baseDeck(bk)); }
+function baseDeck(bk) {
+  if (phaseToday().kind !== "final") return dueCards(bk.b).concat(newToday(bk));
+  var fin = wcFinalRows({ rows: bk.words.map(function (w) { return w[5]; }), t: testRows(bk) }, fsrsAll(), todayIso()), inFin = {};
+  fin.forEach(function (r) { inFin[r] = 1; });
+  return shuffle(fin.filter(function (r) { return INDEX[r]; }).map(function (r) { return INDEX[r]; }))
+    .concat(dueCards(bk.b).filter(function (e) { return !inFin[e[5]]; }).slice(0, WC_FINAL_REVIEW_MAX));
+}
 // もっとやる：まだやっていない語を MORE 語ずつ前倒し。全部やったら範囲からランダムに 50 語（練習）
 function moreDeck(bk) {
   var all = fsrsAll(), pl = todayPlan(bk);
@@ -286,7 +301,11 @@ function learned(bk) { var all = fsrsAll(); return bk.words.filter(function (w) 
 function hub() {
   screen("hub"); $("title").textContent = "単語チェック"; $("count").textContent = "";
   $("hubBig").textContent = "テスト " + md(P.test);
-  $("hubSmall").textContent = "毎日「今日の分」を終わらせよう。もっとやってもOK";
+  var ph = phaseToday(), fa = fsrsAll(), behind = 0;
+  P.books.forEach(function (bk) { bk.words.forEach(function (w) { if (!fa[w[5]]) behind++; }); });
+  $("hubSmall").textContent = ph.kind === "final" ? (days(todayIso(), P.test) === 1 ? "明日はテスト。今日はテスト範囲を全部 1 周しよう" : "テスト範囲を全部 1 周しよう")
+    : ph.kind === "review" ? (behind ? "まだやっていない語が " + behind + " 語。今日中に追いつこう" : "新しい語は出し切った。今日は復習の日")
+    : "新しい語は あと " + ph.left + " 日で出し切る。毎日「今日の分」を終わらせよう";
   var box = $("books"), total = 0, per = []; box.innerHTML = "";
   P.books.forEach(function (bk) {
     var deck = todayDeck(bk), n = bk.words.length, k = learned(bk), card = el("div", "book");
@@ -318,20 +337,27 @@ $("back").onclick = function () { commit(); hub(); };
 function begin(bk, kind, deck, round) {
   if (!deck.length) return;
   S = { book: bk, kind: kind, round: round, deck: deck, idx: deck.map(function (w, k) { return k; }), i: 0, res: [], times: [], fs: [], undo: 0,
-        started: Date.now(), id: rid(), sent: false, shownAt: 0, flipAt: 0, flipped: false };
+        started: Date.now(), id: rid(), sent: false, sentN: 0, part: 0, pp: [], shownAt: 0, flipAt: 0, flipped: false };
   var names = { today: "今日の分", more: "もっとやる", miss: "ミスだけ", again: "もう一周" };
   $("title").textContent = (bk.label || "") + "　" + names[kind] + (round > 1 ? "　" + round + "周目" : "");
   screen("swipe"); render();
 }
 function word() { return S.deck[S.idx[S.i]]; }
-function counts() { var ok = 0, ng = 0; for (var j = 0; j < S.i; j++) { if (S.res[j]) ng++; else ok++; } return [ok, ng]; }
+// 語ごとに見て、○＝もう ○ になった語、✕＝まだ ○ になっていないミスの語（PERIOD 以外は 1 周だけなので回答ごと）
+function counts() {
+  var ok = 0, ng = 0, last = {};
+  for (var j = 0; j < S.i; j++) last[S.idx[j]] = S.res[j];
+  Object.keys(last).forEach(function (k) { if (last[k]) ng++; else ok++; });
+  return [ok, ng];
+}
 function progress() {
-  var n = S.idx.length, c = counts();
-  $("count").textContent = Math.min(S.i + 1, n) + " / " + n;
+  var n = S.deck.length, c = counts();
+  $("count").textContent = PERIOD ? c[0] + " / " + n + (S.i >= S.deck.length ? "　" + (S.idx.length - S.i) + " 語のこり" : "")
+                                  : Math.min(S.i + 1, n) + " / " + n;
   $("barOk").style.width = (c[0] / n * 100) + "%"; $("barNg").style.width = (c[1] / n * 100) + "%";
   $("nOk").textContent = "○ " + c[0]; $("nNg").textContent = "✕ " + c[1];
 }
-function setButtons() { $("bng").disabled = $("bok").disabled = !S.flipped; $("bundo").disabled = S.i === 0; }
+function setButtons() { $("bng").disabled = $("bok").disabled = !S.flipped; $("bundo").disabled = S.i <= S.sentN; }
 function render() {
   var stage = $("stage"); [].slice.call(stage.querySelectorAll(".card")).forEach(function (c) { c.remove(); }); progress();
   if (S.i >= S.idx.length) { finish(); return; }
@@ -376,6 +402,10 @@ function decide(miss, dir) {
   var now = Date.now(), w = word();
   S.res[S.i] = miss; S.times[S.i] = [S.flipAt ? S.flipAt - S.shownAt : 0, now - S.shownAt];
   S.fs[S.i] = PERIOD ? fsrsRate(w[5], !miss) : null;
+  if (PERIOD) {                                                // ✕は最後に回す。戻すときのために前の「残り」を覚える
+    S.pp[S.i] = !!pendAll()[w[5]]; setPend(w[5], miss);
+    if (miss) S.idx.push(S.idx[S.i]);
+  }
   var card = $("stage").querySelector(".card"); tint(card, dir); card.style.transition = "transform .22s ease-in";
   card.style.transform = "translateX(" + (dir * 520) + "px) rotate(" + (dir * 24) + "deg)";
   setTimeout(function () { busy = false; S.i++; render(); }, 200);
@@ -383,12 +413,28 @@ function decide(miss, dir) {
 $("bng").onclick = function () { decide(true, -1); };
 $("bok").onclick = function () { decide(false, 1); };
 $("bundo").onclick = function () {
-  if (S.i > 0 && !busy) { S.i--; fsrsUndo(S.fs[S.i]); S.res.length = S.fs.length = S.times.length = S.i; S.undo++; render(); }
+  if (S.i > S.sentN && !busy) {
+    S.i--; fsrsUndo(S.fs[S.i]);
+    if (PERIOD) {
+      var w = word();
+      if (S.res[S.i]) S.idx.pop();                       // 後ろに回した分を取り消す
+      setPend(w[5], S.pp[S.i]);
+    }
+    S.res.length = S.fs.length = S.times.length = S.i; S.undo++; render();
+  }
 };
 
 // ================================================================ 結果
 function missIdx() { return S.idx.filter(function (x, k) { return S.res[k]; }); }
+// 1 回目で ○ だった語の数（PERIOD）。それ以外は 1 周の ○ の数
+function firstRes() { var seen = {}, out = []; S.idx.forEach(function (wi, k) { if (!(wi in seen) && k < S.res.length) { seen[wi] = 1; out.push([wi, k]); } }); return out; }
 function showScore() {
+  if (PERIOD) {
+    var fr = firstRes(), ok1 = fr.filter(function (x) { return !S.res[x[1]]; }).length;
+    $("score").textContent = "○ " + ok1; $("outof").textContent = "/ " + S.deck.length;
+    $("resSub").textContent = ok1 === S.deck.length ? "全部 1 回で ○" : "1 回目の ○。ミスした " + (S.deck.length - ok1) + " 語も全部 ○ にした";
+    return;
+  }
   var n = S.idx.length, ok = S.res.filter(function (x) { return x === false; }).length;
   $("score").textContent = "○ " + ok; $("outof").textContent = "/ " + n;
   $("resSub").textContent = ok === n ? "全部 ○" : "✕ " + (n - ok) + " 語";
@@ -397,8 +443,17 @@ function finish() {
   screen("review"); $("count").textContent = "結果"; showScore(); refreshAgain();
   $("againAll").style.display = PERIOD ? "block" : "none";
   $("toHub").textContent = PERIOD ? "一覧にもどる" : "送信して終わる";
-  $("listLead").textContent = "ミスした語は赤。押しまちがいはタップで直せる";
+  $("listLead").textContent = PERIOD ? "1 回目でミスした語は赤。押しまちがいは回の途中の ↶ で直す" : "ミスした語は赤。押しまちがいはタップで直せる";
   var list = $("list"); list.innerHTML = "";
+  if (PERIOD) {
+    firstRes().forEach(function (x) {
+      var w = S.deck[x[0]], b = el("div", "w" + (S.res[x[1]] ? " on" : ""));
+      b.appendChild(el("span", "n", "No." + (w[4] || w[0]))); b.appendChild(el("span", "t", w[1]));
+      if (w[2]) b.appendChild(el("span", "m", w[2].split("／")[0]));
+      list.appendChild(b);
+    });
+    return;
+  }
   S.idx.forEach(function (wi, k) {
     var w = S.deck[wi], b = el("button", "w" + (S.res[k] ? " on" : ""));
     b.appendChild(el("span", "n", "No." + (w[4] || w[0]))); b.appendChild(el("span", "t", w[1]));
@@ -412,7 +467,7 @@ function finish() {
     list.appendChild(b);
   });
 }
-function refreshAgain() { var m = missIdx(); $("againMiss").style.display = PERIOD && m.length ? "block" : "none"; $("againMiss").textContent = "ミスだけもう一周（" + m.length + "語）"; }
+function refreshAgain() { var m = missIdx(); $("againMiss").style.display = "none"; $("againMiss").textContent = "ミスだけもう一周（" + m.length + "語）"; }
 $("againMiss").onclick = function () {
   var s = S, m = missIdx().map(function (wi) { return s.deck[wi]; }); commit();
   begin(s.book, "miss", m, s.round + 1);
@@ -435,8 +490,9 @@ function saveState() {
   if (!PERIOD || !P || !window.caches) return;
   var plans = {};
   P.books.forEach(function (bk) { var pl = store(planKey(bk)); if (pl) plans[bk.b] = { date: todayIso(), rows: pl.rows }; });
-  var snap = { test: P.test, bookOf: BOOK, fsrs: fsrsAll(), plans: plans, url: location.href,
-               books: P.books.map(function (bk) { return { b: bk.b, label: bk.label, rows: bk.words.map(function (w) { return w[5]; }) }; }) };
+  var pend = Object.keys(pendAll());
+  var snap = { pend: pend, handout: P.handout, test: P.test, bookOf: BOOK, fsrs: fsrsAll(), plans: plans, url: location.href,
+               books: P.books.map(function (bk) { return { b: bk.b, label: bk.label, rows: bk.words.map(function (w) { return w[5]; }), t: testRows(bk) }; }) };
   caches.open("wc-state").then(function (c) {
     return c.put("state.json", new Response(JSON.stringify(snap), { headers: { "Content-Type": "application/json" } }));
   }).catch(function () {});
@@ -528,14 +584,20 @@ function flush() {
   });
 }
 function commit() {
-  if (!S || S.sent || S.i < S.idx.length) return;
-  S.sent = true;
+  if (!S || S.sent) return;
   var body;
   if (PERIOD) {
-    // 1 語ごと [行番号, ○=1/✕=0, 裏返すまでの ms, 決めるまでの ms]
-    body = { v: 2, p: SID, id: S.id, day: KIND[S.kind], b: S.book.b, round: S.round, mode: "fsrs", started: S.started, ended: Date.now(), undo: S.undo,
-             items: S.idx.map(function (wi, k) { var w = S.deck[wi]; return [w[5], S.res[k] ? 0 : 1, S.times[k] ? S.times[k][0] : 0, S.times[k] ? S.times[k][1] : 0]; }) };
+    if (S.i <= S.sentN) { if (S.i >= S.idx.length) S.sent = true; return; }
+    // 1 語ごと [行番号, ○=1/✕=0, 裏返すまでの ms, 決めるまでの ms]。同じ語が何回も出る（✕を後ろに回すので）
+    var items = [];
+    for (var k = S.sentN; k < S.i; k++) { var w = S.deck[S.idx[k]]; items.push([w[5], S.res[k] ? 0 : 1, S.times[k] ? S.times[k][0] : 0, S.times[k] ? S.times[k][1] : 0]); }
+    body = { v: 2, p: SID, id: S.id + (S.part ? "-" + S.part : ""), day: KIND[S.kind], b: S.book.b, round: S.round, mode: "fsrs", started: S.started, ended: Date.now(), undo: S.undo,
+             items: items };
+    S.sentN = S.i; S.part++;
+    if (S.i >= S.idx.length) S.sent = true;
   } else {
+    if (S.i < S.idx.length) return;
+    S.sent = true;
     body = { s: SID, miss: missIdx().map(function (wi) { return S.deck[wi][0]; }) };
   }
   store(PENDING, pending().concat([{ t: Date.now() + Math.random(), body: body }]));
