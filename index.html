@@ -62,10 +62,15 @@ header{padding:calc(12px + env(safe-area-inset-top)) 18px 6px}
 .left .num small{font-size:15px;font-weight:600;color:var(--sub);margin-left:4px}
 .left .per{margin-top:2px;font-size:14px;color:var(--sub);font-variant-numeric:tabular-nums}
 .left.zero .num{color:var(--ok)}
-#notify{display:none;margin:0 0 12px;font-size:13px;color:var(--sub);line-height:1.6}
+#gear{display:none;border:1px solid var(--line);background:var(--card);border-radius:8px;padding:5px 10px;font-size:14px}
+#hubNote{display:none;width:100%;margin:0 0 12px;border:1px dashed var(--line);border-radius:10px;padding:10px;font-size:14px;background:transparent;color:var(--sub);text-align:left}
+#settings{display:none;padding:8px 18px 40px}
+.sec{border:1px solid var(--line);border-radius:12px;padding:14px;background:var(--card)}
+.sec h2{margin:0 0 6px;font-size:16px}
+#notify{font-size:13px;color:var(--sub);line-height:1.6}
 #notify select{margin:0 4px;font-size:16px;padding:4px 6px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink)}
 #notify .tline{margin-top:6px;font-size:15px;color:var(--ink)}
-#notify button{display:block;width:100%;margin-top:6px;border:1px solid var(--line);border-radius:10px;padding:11px;font-size:15px;font-weight:600;background:var(--card)}
+#notify button{display:block;width:100%;margin-top:10px;border:1px solid var(--line);border-radius:10px;padding:11px;font-size:15px;font-weight:600;background:var(--card);color:var(--ink)}
 .book{border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px;background:var(--card)}
 .book .name{font-size:17px;font-weight:700}
 .book .range{margin-top:2px;font-size:13px;color:var(--sub)}
@@ -122,7 +127,7 @@ button.w.on .t{color:var(--ng)}
 </head>
 <body>
 <header>
- <div class="top"><button id="back">← 一覧</button><div id="title">単語チェック</div><div id="count"></div></div>
+ <div class="top"><button id="back">← 一覧</button><div id="title">単語チェック</div><div id="count"></div><button id="gear" aria-label="設定">設定</button></div>
  <div id="progWrap">
   <div class="bar"><div id="barOk"></div><div id="barNg"></div></div>
   <div class="nums"><span id="nOk">○ 0</span><span id="nNg">✕ 0</span></div>
@@ -133,8 +138,12 @@ button.w.on .t{color:var(--ng)}
 <div id="hub">
  <div class="hubHead"><div class="big" id="hubBig"></div><div class="small" id="hubSmall"></div></div>
  <div class="left" id="leftBox"><div class="lab">今日の残り</div><div class="num" id="leftNum"></div><div class="per" id="leftPer"></div></div>
- <div id="notify"></div>
+ <button id="hubNote"></button>
  <div id="books"></div>
+</div>
+
+<div id="settings">
+ <div class="sec"><h2>毎日の通知</h2><div id="notify"></div></div>
 </div>
 
 <div id="swipe">
@@ -182,10 +191,11 @@ function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.cl
 function screen(id) {
   document.body.classList.toggle("lock", id === "swipe");
   if (id !== "swipe") window.scrollTo(0, 0);
-  ["msg", "hub", "swipe", "review"].forEach(function (k) { $(k).style.display = "none"; });
+  ["msg", "hub", "swipe", "review", "settings"].forEach(function (k) { $(k).style.display = "none"; });
   $(id).style.display = id === "swipe" ? "flex" : "block";
   $("progWrap").style.display = (id === "swipe" || id === "review") ? "block" : "none";
   $("back").style.display = PERIOD && id !== "hub" && id !== "msg" ? "block" : "none";
+  $("gear").style.display = PERIOD && id === "hub" ? "block" : "none";
 }
 function show(text) { screen("msg"); $("msg").textContent = text; }
 function store(k, v) { try { if (v === undefined) return JSON.parse(localStorage.getItem(k) || "null"); localStorage.setItem(k, JSON.stringify(v)); } catch (e) { return null; } }
@@ -298,8 +308,10 @@ function hub() {
   if (total) { $("leftNum").textContent = total; $("leftNum").appendChild(el("small", null, "語")); }
   else $("leftNum").textContent = "終わり！";
   $("leftPer").textContent = total ? per.join("・") : "もっとやってもOK";
-  saveState(); notifyBox();
+  saveState(); hubNote();
 }
+// 設定画面
+$("gear").onclick = function () { screen("settings"); $("title").textContent = "設定"; $("count").textContent = ""; notifyBox(); };
 $("back").onclick = function () { commit(); hub(); };
 
 // ================================================================ セッション
@@ -448,17 +460,23 @@ function startPush() {
   if (!("serviceWorker" in navigator)) return;
   navigator.serviceWorker.register("sw.js").then(function (reg) { SWREG = reg; notifyBox(); }).catch(function () {});
 }
+// 一覧の案内：通知がまだのときだけ
+function hubNote() {
+  var b = $("hubNote"), ok = "serviceWorker" in navigator && ("PushManager" in window || (isIOS() && !standalone()));
+  var on = store("push:on") && window.Notification && Notification.permission === "granted";
+  b.style.display = PERIOD && ok && !on ? "block" : "none";
+  b.textContent = "毎日、残りの数を通知で受け取る →";
+  b.onclick = function () { $("gear").onclick(); };
+}
 function notifyBox() {
-  var box = $("notify"); box.innerHTML = ""; box.style.display = "none";
-  if (!PERIOD || !("serviceWorker" in navigator)) return;
+  var box = $("notify"); box.innerHTML = "";
+  if (!PERIOD || !("serviceWorker" in navigator)) { box.textContent = "この端末では通知を使えない"; return; }
   if (!("PushManager" in window)) {
     if (isIOS() && !standalone()) {
       box.textContent = "ホーム画面に追加すると、毎日好きな時刻に残りの数が通知で届く（下の共有ボタン →「ホーム画面に追加」→ ホーム画面のアイコンから開く）";
-      box.style.display = "block";
-    }
+    } else box.textContent = "この端末では通知を使えない";
     return;
   }
-  box.style.display = "block";
   if (Notification.permission === "denied") { box.textContent = "通知がオフになっている。設定アプリ →「通知」→「単語チェック」でオンにしてね"; return; }
   var on = store("push:on") && Notification.permission === "granted";
   box.appendChild(el("div", null, on ? "残りの数を毎日通知中（終わった日は来ない）" : "残りの数を毎日、通知で受け取れる"));
