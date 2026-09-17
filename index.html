@@ -21,7 +21,7 @@
   見た目（2026-09-16 本人希望）：シンプルに。演出なし、白基調。フリックはそのまま。
   このページには単語も氏名も入っていない。データは暗号化して d/<ID>.txt、鍵は URL の # の後ろ。
   ホーム画面と毎日の通知（2026-09-17 本人決定）：一覧の上に「今日の残り」。ホーム画面に追加すると
-  毎日 19 時に残りの数を通知（通知サーバーは Cloudflare Worker、フォルダ「通知」）。送るのは生徒コードと残りの数だけ。
+  毎日好きな時刻（30 分刻み、端末ごと。既定 19:00）に残りの数を通知（通知サーバーは Cloudflare Worker、フォルダ「通知」）。送るのは生徒コードと残りの数だけ。
   ホーム画面のアイコンは追加したときの QR のアドレスで開くので、期間のデータに「最新の期間の置き場」（ptr）を入れ、
   新しい期間があればそちらへ切り替える。
 -->
@@ -63,6 +63,8 @@ header{padding:calc(12px + env(safe-area-inset-top)) 18px 6px}
 .left .per{margin-top:2px;font-size:14px;color:var(--sub);font-variant-numeric:tabular-nums}
 .left.zero .num{color:var(--ok)}
 #notify{display:none;margin:0 0 12px;font-size:13px;color:var(--sub);line-height:1.6}
+#notify select{margin:0 4px;font-size:16px;padding:4px 6px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink)}
+#notify .tline{margin-top:6px;font-size:15px;color:var(--ink)}
 #notify button{display:block;width:100%;margin-top:6px;border:1px solid var(--line);border-radius:10px;padding:11px;font-size:15px;font-weight:600;background:var(--card)}
 .book{border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px;background:var(--card)}
 .book .name{font-size:17px;font-weight:700}
@@ -161,7 +163,7 @@ button.w.on .t{color:var(--ng)}
 var API = "https://script.google.com/macros/s/AKfycbwsGa_Uy_OUv4okR-Lms4a0sF0t6gLJrPtoRJc-g5c_Cbr8fRf7_F43nnjzZWrfshJ_0g/exec";   // 2026-09-15 夜（FSRS 対応）にデプロイし直した URL
 var NOTIFY = "https://wordcheck-notify.wc30df6df0.workers.dev";     // 通知サーバー（Cloudflare Worker）
 var VAPID = "BP7_JwgCCmh-V3y54PnC3u9K5KV1RZZWYuIvhTfC1a_X6v7ry_OkzieJ2P4fn8-CM5tS7HLt5s-6V_jt5XYkW-Q";    // 通知サーバーの公開鍵
-var NOTIFY_HOUR = 19;              // 通知の時刻（Worker の cron と合わせる）
+var DEFAULT_TIME = "19:00";         // 通知の時刻の既定（生徒が 30 分刻みで変えられる。Worker と合わせる）
 var SID = (new URLSearchParams(location.search).get("s") || "").trim().toLowerCase();
 var KEY = new URLSearchParams(location.hash.slice(1)).get("k") || "";
 var PERIOD = SID.charAt(6) === "p";
@@ -451,7 +453,7 @@ function notifyBox() {
   if (!PERIOD || !("serviceWorker" in navigator)) return;
   if (!("PushManager" in window)) {
     if (isIOS() && !standalone()) {
-      box.textContent = "ホーム画面に追加すると、毎日 " + NOTIFY_HOUR + " 時に残りの数が通知で届く（下の共有ボタン →「ホーム画面に追加」→ ホーム画面のアイコンから開く）";
+      box.textContent = "ホーム画面に追加すると、毎日好きな時刻に残りの数が通知で届く（下の共有ボタン →「ホーム画面に追加」→ ホーム画面のアイコンから開く）";
       box.style.display = "block";
     }
     return;
@@ -459,11 +461,24 @@ function notifyBox() {
   box.style.display = "block";
   if (Notification.permission === "denied") { box.textContent = "通知がオフになっている。設定アプリ →「通知」→「単語チェック」でオンにしてね"; return; }
   var on = store("push:on") && Notification.permission === "granted";
-  box.appendChild(el("div", null, on ? "毎日 " + NOTIFY_HOUR + " 時に残りの数を通知中（終わった日は来ない）" : "毎日 " + NOTIFY_HOUR + " 時に、残りの数を通知で受け取れる"));
+  box.appendChild(el("div", null, on ? "残りの数を毎日通知中（終わった日は来ない）" : "残りの数を毎日、通知で受け取れる"));
+  // 時刻（30 分刻み）。オンのときは変えたらすぐ登録し直す
+  var line = el("div", "tline", "毎日"), sel = el("select"), cur = pushTime();
+  for (var h = 5; h < 24; h++) ["00", "30"].forEach(function (m) {
+    var v = ("0" + h).slice(-2) + ":" + m, o = el("option", null, h + ":" + m); o.value = v; if (v === cur) o.selected = true; sel.appendChild(o);
+  });
+  sel.onchange = function () {
+    var prev = pushTime(); store("push:time", sel.value);
+    if (on) pushOn().then(function () { note.textContent = "変更した"; }, function () { store("push:time", prev); sel.value = prev; note.textContent = "変更できなかった。電波のいい所でもう一回"; });
+  };
+  var note = el("span"); note.style.marginLeft = "6px"; note.style.fontSize = "13px"; note.style.color = "var(--sub)";
+  line.appendChild(sel); line.appendChild(document.createTextNode("に通知")); line.appendChild(note);
+  box.appendChild(line);
   var b = el("button", null, on ? "通知をやめる" : "通知をオンにする");
   b.onclick = function () { b.disabled = true; (on ? pushOff() : pushOn()).then(notifyBox, function () { b.disabled = false; b.textContent = "うまくいかなかった。もう一回"; }); };
   box.appendChild(b);
 }
+function pushTime() { var t = store("push:time"); return /^\d\d:[03]0$/.test(t || "") ? t : DEFAULT_TIME; }
 function pushOn() {
   return Notification.requestPermission().then(function (p) {
     if (p !== "granted") { notifyBox(); throw new Error("denied"); }
@@ -473,7 +488,7 @@ function pushOn() {
       return sub || reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64u(VAPID) });
     });
   }).then(function (sub) {
-    return post("/sub", { c: ME, sub: sub.toJSON() });
+    return post("/sub", { c: ME, sub: sub.toJSON(), t: pushTime() });
   }).then(function () { store("push:on", true); store("left:sent", ""); saveState(); });
 }
 function pushOff() {
