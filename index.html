@@ -24,6 +24,7 @@
   毎日好きな時刻（30 分刻み、端末ごと。既定 19:00）に残りの数を通知（通知サーバーは Cloudflare Worker、フォルダ「通知」）。送るのは生徒コードと残りの数だけ。
   ホーム画面のアイコンは追加したときの QR のアドレスで開くので、期間のデータに「最新の期間の置き場」（ptr）を入れ、
   新しい期間があればそちらへ切り替える。
+  英単語の読み上げ（2026-09-17 生徒の要望）：カードの再生ボタンで端末の音声（Web Speech API）。外部には送らない。
   自分の記録（2026-09-17 本人決定）：一覧の「記録」から。連続日数・テスト範囲の仕上がり・日ごとの実施・苦手語（苦手語だけ回せる）。
   端末に残した記録（hist:／cnt:）と、期間のデータに入れて配った記録（hist・dayn、アプリ結果.csv から）を合わせて出す。
 -->
@@ -117,6 +118,8 @@ table.days tr.today td:first-child{font-weight:700}
 .card .tag{position:absolute;top:14px;left:50%;transform:translateX(-50%);font-size:12px;color:var(--sub)}
 .card .no{position:relative;font-size:13px;color:var(--sub)}
 .card .word{position:relative;font-size:clamp(28px,9vw,40px);font-weight:700;text-align:center;word-break:break-word;margin-top:6px;line-height:1.15}
+.card .say{position:relative;margin-top:10px;width:44px;height:44px;border-radius:50%;border:1px solid var(--line);background:var(--card);color:var(--acc);font-size:18px;display:flex;align-items:center;justify-content:center;touch-action:manipulation}
+.card .say:active{background:var(--bg)}
 .card .back{position:relative;display:flex;flex-direction:column;align-items:center;min-height:86px}
 .card .tapHint{margin-top:22px;font-size:14px;color:var(--sub)}
 .card .pos{margin-top:14px;font-size:12px;color:var(--sub);border:1px solid var(--line);border-radius:6px;padding:2px 8px}
@@ -502,6 +505,7 @@ function render() {
   if (PERIOD && !fsrsAll()[w[5]]) card.appendChild(el("div", "tag", "はじめて"));
   card.appendChild(el("div", "no", "No." + (w[4] || w[0])));
   card.appendChild(el("div", "word", w[1]));
+  if (S.book.b === "e" && canSpeak()) card.appendChild(sayButton(w[1]));
   var back = el("div", "back"); card.appendChild(back);
   S.flipped = false; S.shownAt = Date.now(); S.flipAt = 0;
   if (PERIOD) back.appendChild(el("div", "tapHint", "タップで答え")); else flip(card, back);
@@ -519,6 +523,32 @@ function render() {
     if (dx > 90) decide(false, 1); else if (dx < -90) decide(true, -1);
     else { card.style.transition = "transform .25s ease-out"; card.style.transform = ""; tint(card, 0); }
   };
+}
+// 英単語の読み上げ（端末の音声。ボタンを押したときだけ）
+function canSpeak() { return "speechSynthesis" in window && "SpeechSynthesisUtterance" in window; }
+var VOICE = null;
+// Mac・iPhone には効果音のような声（Albert など）も入っているので外し、ふつうの声を優先する
+var ODD_VOICE = /Albert|Bad News|Bahh|Bells|Boing|Bubbles|Cellos|Good News|Jester|Organ|Superstar|Trinoids|Whisper|Wobble|Zarvox|Fred|Junior|Kathy|Ralph|Grandma|Grandpa|Eddy|Flo|Reed|Rocko|Sandy|Shelley/i;
+var GOOD_VOICE = /Samantha|Alex|Ava|Allison|Susan|Tom|Google US English|Microsoft (Aria|Jenny|Zira)/i;
+function pickVoice() {
+  var vs = speechSynthesis.getVoices().filter(function (v) { return /^en[-_]/i.test(v.lang) && !ODD_VOICE.test(v.name); });
+  var us = vs.filter(function (v) { return /^en[-_]US/i.test(v.lang); });
+  VOICE = us.filter(function (v) { return GOOD_VOICE.test(v.name); })[0] || us.filter(function (v) { return v.default; })[0]
+       || us[0] || vs[0] || null;
+}
+if (canSpeak()) { pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; }
+function speak(text) {
+  speechSynthesis.cancel();
+  var u = new SpeechSynthesisUtterance(text.replace(/[（(].*?[）)]/g, "").trim());
+  u.lang = VOICE ? VOICE.lang : "en-US"; if (VOICE) u.voice = VOICE; u.rate = 0.9;
+  speechSynthesis.speak(u);
+}
+function sayButton(text) {
+  var b = el("button", "say", "▶"); b.setAttribute("aria-label", "発音を聞く");
+  // カードのタップ（答えを見る）・フリックにしない
+  ["pointerdown", "pointermove", "pointerup", "pointercancel"].forEach(function (ev) { b.addEventListener(ev, function (e) { e.stopPropagation(); }); });
+  b.onclick = function (e) { e.stopPropagation(); speak(text); };
+  return b;
 }
 function flip(card, back) {
   if (S.flipped) return;
