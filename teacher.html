@@ -32,12 +32,14 @@ header button{border:1px solid var(--line);background:var(--card);border-radius:
 #notice button{display:block;width:100%;margin-top:8px;border:1px solid var(--line);border-radius:10px;padding:10px;font-size:15px;font-weight:600;background:var(--card)}
 main{padding:10px 16px 40px}
 .msg{padding:60px 0;text-align:center;color:var(--sub)}
-details.st{background:var(--card);border:1px solid var(--line);border-radius:12px;margin-bottom:12px;overflow:hidden}
-details.st>summary{list-style:none;padding:14px;cursor:pointer}
-details.st>summary::-webkit-details-marker{display:none}
+.st{background:var(--card);border:1px solid var(--line);border-radius:12px;margin-bottom:12px}
+.st .top{display:block;padding:14px;cursor:pointer}
+.st .body{display:none}
+.st.open .body{display:block}
 .sh{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
-.sh .nm{font-size:18px;font-weight:700}
-.sh .today{font-size:14px;font-variant-numeric:tabular-nums}
+.sh .nm{font-size:18px;font-weight:700;min-width:0;word-break:break-all}
+.sh .today{font-size:14px;white-space:nowrap;flex:none;font-variant-numeric:tabular-nums}
+.sh .arrow{flex:none;color:var(--sub);font-size:13px}
 .sl{margin-top:4px;font-size:13px;color:var(--sub);font-variant-numeric:tabular-nums}
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .chip{font-size:12px;border-radius:999px;padding:2px 9px;border:1px solid var(--line);font-variant-numeric:tabular-nums}
@@ -48,13 +50,15 @@ details.st>summary::-webkit-details-marker{display:none}
 .bk{border-top:1px solid var(--line);padding-top:12px;margin-top:12px}
 .bk h3{margin:0;font-size:16px}
 .bk .rng{font-size:12px;color:var(--sub);margin-top:2px}
-.kv{display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin-top:10px}
+.kv{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin-top:10px}
 .kv>div{background:var(--bg);border-radius:8px;padding:8px;min-width:0}
 .kv b{display:block;font-size:20px;line-height:1.3;font-variant-numeric:tabular-nums}
 .kv span{display:block;font-size:11px;line-height:1.4;color:var(--sub)}
 .bar{height:6px;border-radius:3px;background:var(--line);overflow:hidden;margin-top:4px}
 .bar>div{height:100%;background:var(--ok)}
-table{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums;margin-top:10px}
+table{width:100%;table-layout:fixed;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums;margin-top:10px}
+col.c0{width:34%}col.c1{width:10%}col.c2{width:15%}col.c3{width:13%}col.c4{width:12%}col.c5{width:16%}
+td,th{white-space:nowrap;overflow:hidden}
 th{font-size:11px;color:var(--sub);font-weight:600;text-align:right;padding:4px 2px;border-bottom:1px solid var(--line)}
 td{text-align:right;padding:5px 2px;border-bottom:1px solid var(--line)}
 th:first-child,td:first-child{text-align:left}
@@ -65,11 +69,14 @@ tr.miss td{color:var(--ng)}
 .note{font-size:11px;color:var(--sub);margin-top:4px;line-height:1.5}
 .weak{margin-top:10px}
 .weak h4{margin:0 0 4px;font-size:13px}
-.wk{display:flex;gap:8px;font-size:13px;padding:5px 0;border-bottom:1px solid var(--line)}
-.wk .no{color:var(--sub);width:44px;flex:none;font-variant-numeric:tabular-nums}
-.wk .w{font-weight:600;flex:none;max-width:40%;word-break:break-all}
-.wk .m{color:var(--sub);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.wk .x{color:var(--ng);flex:none;font-variant-numeric:tabular-nums}
+/* 苦手語：1 行目 番号・単語・✕、2 行目 意味（横に詰めると狭い画面で潰れる） */
+.wk{font-size:13px;padding:6px 0;border-bottom:1px solid var(--line)}
+.wk .l1{display:flex;align-items:baseline;gap:8px}
+.wk .no{color:var(--sub);flex:none;font-variant-numeric:tabular-nums}
+.wk .w{font-weight:600;flex:1;min-width:0;word-break:break-all}
+.wk .x{color:var(--ng);flex:none;font-size:12px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.wk .m{color:var(--sub);font-size:12px;margin-top:2px;word-break:break-all}
+.recent h4{margin:0 0 4px;font-size:13px}
 .recent{margin-top:10px}
 .recent .r{font-size:12px;color:var(--sub);padding:3px 0;font-variant-numeric:tabular-nums}
 </style>
@@ -154,7 +161,7 @@ function refresh() {
 // ================================================================ 集計
 function render(dayList) {
   var today = iso(new Date()), main = $("main"), opened = {};
-  [].forEach.call(document.querySelectorAll("details.st"), function (d) { if (d.open) opened[d.dataset.c] = 1; });
+  [].forEach.call(document.querySelectorAll(".st.open"), function (d) { opened[d.dataset.c] = 1; });
   main.innerHTML = "";
   var byCode = {};
   dayList.forEach(function (x) { (byCode[x[0]] = byCode[x[0]] || []).push.apply(byCode[x[0]], x[2]); });
@@ -190,11 +197,13 @@ function studentBlock(c, sessions, today, open) {
   // いまの期間（渡した日が今日以前で一番新しい）
   var cur = null;
   periods.forEach(function (p) { if (p.handout <= today && (!cur || p.handout >= cur.handout)) cur = p; });
-  var det = el("details", "st"); det.dataset.c = c; if (open) det.open = true;
-  var sum = el("summary"), sh = el("div", "sh");
+  var det = el("div", "st" + (open ? " open" : "")); det.dataset.c = c;
+  var sum = el("div", "top"), sh = el("div", "sh");
+  sum.onclick = function () { det.classList.toggle("open"); arrow.textContent = det.classList.contains("open") ? "▲" : "▼"; };
   var todayN = recs.filter(function (r) { return r.d === today; }).length;
   sh.appendChild(el("span", "nm", NAMES[c]));
   sh.appendChild(el("span", "today", todayN ? "今日 " + todayN + " 回答" : "今日 まだ"));
+  var arrow = el("span", "arrow", open ? "▲" : "▼"); sh.appendChild(arrow);
   sum.appendChild(sh);
   var lastS = sessions[sessions.length - 1];
   sum.appendChild(el("div", "sl", (lastS ? "最後 " + hm(lastS.ended || lastS.started) : "記録なし") +
@@ -254,13 +263,15 @@ function bookBlock(bk, p, W, st, last, first, firsts, recs, today) {
     fst[r.d] = (fst[r.d] || 0) + 1; oks[r.d] = (oks[r.d] || 0) + (r.ok ? 1 : 0);
     if (first[r.row] === r.d && inR[r.row]) nw[r.d] = (nw[r.d] || 0) + 1;
   });
-  var tb = el("table"), hr = el("tr");
+  var tb = el("table"), cg = el("colgroup"), hr = el("tr");
+  for (var ci = 0; ci < 6; ci++) cg.appendChild(el("col", "c" + ci));
+  tb.appendChild(cg);
   ["日", "", "回答", "語", "新", "○率"].forEach(function (x) { hr.appendChild(el("th", null, x)); });
   tb.appendChild(hr);
   for (var d = p.handout; d < p.test; d = addDays(d, 1)) {
     var a = ans[d] || 0, cls = d === today ? "today" : d > today ? "future" : (d > p.handout && !a ? "miss" : "");
     var tr = el("tr", cls), tag = { intro: "新", review: "復", final: "総" }[wcPhase(p.handout, p.test, d).kind];
-    [md(d), tag, a || "", fst[d] || "", nw[d] || "", fst[d] ? pct(oks[d] / fst[d]) : "—"].forEach(function (v, i) {
+    [md(d).replace("（", "(").replace("）", ")"), tag, a || "", fst[d] || "", nw[d] || "", fst[d] ? pct(oks[d] / fst[d]) : "—"].forEach(function (v, i) {
       tr.appendChild(el("td", i === 1 ? "tag" : null, String(v)));
     });
     tb.appendChild(tr);
@@ -276,10 +287,11 @@ function bookBlock(bk, p, W, st, last, first, firsts, recs, today) {
   }).slice(0, WEAK_SHOW);
   var wk = el("div", "weak"); wk.appendChild(el("h4", null, "苦手語（✕ の多い順）"));
   weak.forEach(function (r) {
-    var x = W[r], line = el("div", "wk");
-    line.appendChild(el("span", "no", "No." + x.no)); line.appendChild(el("span", "w", x.w));
-    line.appendChild(el("span", "m", (x.m || "").split("／")[0]));
-    line.appendChild(el("span", "x", "✕" + ng[r] + "/" + cnt[r] + "・次 " + md(addDays(last[r], Math.max(1, Math.round(st[r][0]))))));
+    var x = W[r], line = el("div", "wk"), l1 = el("div", "l1");
+    l1.appendChild(el("span", "no", "No." + x.no)); l1.appendChild(el("span", "w", x.w));
+    l1.appendChild(el("span", "x", "✕" + ng[r] + "/" + cnt[r] + "・次 " + md(addDays(last[r], Math.max(1, Math.round(st[r][0])))).replace(/（.）/, "")));
+    line.appendChild(l1);
+    line.appendChild(el("div", "m", (x.m || "").split("／")[0]));
     wk.appendChild(line);
   });
   if (!weak.length) wk.appendChild(el("div", "note", "まだ無い"));
