@@ -7,6 +7,10 @@
 <meta name="referrer" content="no-referrer">
 <meta name="theme-color" content="#f4f4f6">
 <title>単語チェック</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="単語チェック">
 <!--
   単語チェック（宿題の単語アプリ）
   - 期間の QR（?s=<期間ID>、7 文字目が p）：単語帳ごとに「今日の分」→ 単語だけ見て答える → タップで訳 → ○／✕。
@@ -16,6 +20,10 @@
   - 紙の QR（?s=<シートID>、7 文字目が e/k）：紙の宿題の答え合わせのあとに誤答を入れる（前からの形）。
   見た目（2026-09-16 本人希望）：シンプルに。演出なし、白基調。フリックはそのまま。
   このページには単語も氏名も入っていない。データは暗号化して d/<ID>.txt、鍵は URL の # の後ろ。
+  ホーム画面と毎日の通知（2026-09-17 本人決定）：一覧の上に「今日の残り」。ホーム画面に追加すると
+  毎日 19 時に残りの数を通知（通知サーバーは Cloudflare Worker、フォルダ「通知」）。送るのは生徒コードと残りの数だけ。
+  ホーム画面のアイコンは追加したときの QR のアドレスで開くので、期間のデータに「最新の期間の置き場」（ptr）を入れ、
+  新しい期間があればそちらへ切り替える。
 -->
 <style>
 :root{--bg:#f4f4f6;--card:#fff;--ink:#1c1c22;--sub:#6e6e78;--line:#e2e2e8;--ok:#1a9d5c;--ng:#d93d4a;--acc:#2f6fdf}
@@ -48,6 +56,14 @@ header{padding:calc(12px + env(safe-area-inset-top)) 18px 6px}
 .hubHead{margin:4px 0 16px}
 .hubHead .big{font-size:24px;font-weight:700}
 .hubHead .small{margin-top:4px;font-size:13px;color:var(--sub)}
+.left{border-radius:12px;background:var(--card);border:1px solid var(--line);padding:14px;margin-bottom:12px}
+.left .lab{font-size:13px;color:var(--sub)}
+.left .num{font-size:30px;font-weight:700;font-variant-numeric:tabular-nums;margin-top:2px}
+.left .num small{font-size:15px;font-weight:600;color:var(--sub);margin-left:4px}
+.left .per{margin-top:2px;font-size:14px;color:var(--sub);font-variant-numeric:tabular-nums}
+.left.zero .num{color:var(--ok)}
+#notify{display:none;margin:0 0 12px;font-size:13px;color:var(--sub);line-height:1.6}
+#notify button{display:block;width:100%;margin-top:6px;border:1px solid var(--line);border-radius:10px;padding:11px;font-size:15px;font-weight:600;background:var(--card)}
 .book{border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px;background:var(--card)}
 .book .name{font-size:17px;font-weight:700}
 .book .range{margin-top:2px;font-size:13px;color:var(--sub)}
@@ -114,6 +130,8 @@ button.w.on .t{color:var(--ng)}
 
 <div id="hub">
  <div class="hubHead"><div class="big" id="hubBig"></div><div class="small" id="hubSmall"></div></div>
+ <div class="left" id="leftBox"><div class="lab">今日の残り</div><div class="num" id="leftNum"></div><div class="per" id="leftPer"></div></div>
+ <div id="notify"></div>
  <div id="books"></div>
 </div>
 
@@ -138,12 +156,21 @@ button.w.on .t{color:var(--ng)}
  <div id="list"></div>
 </div>
 
+<script src="left.js"></script>
 <script>
 var API = "https://script.google.com/macros/s/AKfycbwsGa_Uy_OUv4okR-Lms4a0sF0t6gLJrPtoRJc-g5c_Cbr8fRf7_F43nnjzZWrfshJ_0g/exec";   // 2026-09-15 夜（FSRS 対応）にデプロイし直した URL
+var NOTIFY = "https://wordcheck-notify.wc30df6df0.workers.dev";     // 通知サーバー（Cloudflare Worker）
+var VAPID = "BP7_JwgCCmh-V3y54PnC3u9K5KV1RZZWYuIvhTfC1a_X6v7ry_OkzieJ2P4fn8-CM5tS7HLt5s-6V_jt5XYkW-Q";    // 通知サーバーの公開鍵
+var NOTIFY_HOUR = 19;              // 通知の時刻（Worker の cron と合わせる）
 var SID = (new URLSearchParams(location.search).get("s") || "").trim().toLowerCase();
 var KEY = new URLSearchParams(location.hash.slice(1)).get("k") || "";
 var PERIOD = SID.charAt(6) === "p";
 var ME = SID.slice(0, 6);                // 生徒コード（端末に残す FSRS のまとまり）
+// ホーム画面のアイコンは古い期間のアドレスで開く → 端末に残した新しい期間があればそちらを使う
+if (PERIOD) {
+  var CUR = store("cur:" + ME);
+  if (CUR && CUR.s && CUR.k && CUR.s.slice(7, 13) > SID.slice(7, 13)) { SID = CUR.s; KEY = CUR.k; }
+}
 var WD = "日月火水木金土", REVIEW_MAX = 100, MORE = 20;
 // 送る記録の day 欄に入れる周の種類（Apps Script を出し直さずに済むよう mode は fsrs のまま）
 var KIND = { today: 0, more: 1, miss: 2, again: 3 };
@@ -248,7 +275,7 @@ function hub() {
   screen("hub"); $("title").textContent = "単語チェック"; $("count").textContent = "";
   $("hubBig").textContent = "テスト " + md(P.test);
   $("hubSmall").textContent = "毎日「今日の分」を終わらせよう。もっとやってもOK";
-  var box = $("books"); box.innerHTML = "";
+  var box = $("books"), total = 0, per = []; box.innerHTML = "";
   P.books.forEach(function (bk) {
     var deck = todayDeck(bk), n = bk.words.length, k = learned(bk), card = el("div", "book");
     card.appendChild(el("div", "name", bk.label));
@@ -262,7 +289,14 @@ function hub() {
     more.onclick = function () { begin(bk, "more", moreDeck(bk), 1); };
     card.appendChild(more);
     box.appendChild(card);
+    total += deck.length; per.push((bk.b === "k" ? "古文 " : "英 ") + deck.length + " 語");
   });
+  $("leftBox").classList.toggle("zero", !total);
+  $("leftNum").innerHTML = "";
+  if (total) { $("leftNum").textContent = total; $("leftNum").appendChild(el("small", null, "語")); }
+  else $("leftNum").textContent = "終わり！";
+  $("leftPer").textContent = total ? per.join("・") : "もっとやってもOK";
+  saveState(); notifyBox();
 }
 $("back").onclick = function () { commit(); hub(); };
 
@@ -372,6 +406,84 @@ $("againMiss").onclick = function () {
 $("againAll").onclick = function () { var s = S; commit(); begin(s.book, "again", shuffle(s.deck.slice()), s.round + 1); };
 $("toHub").onclick = function () { commit(); if (PERIOD) hub(); else show("送信しました。おつかれさま"); };
 
+// ================================================================ ホーム画面・毎日の通知
+// 新しい期間が出ていたら切り替える（一覧を見ているときだけ。次に開いたときは端末の記録から直接）
+function checkLatest(ptr) {
+  if (!ptr) return;
+  loadLocal(ptr[0], ptr[1]).then(function (x) {
+    if (!x.s || x.s === SID || x.s.slice(7, 13) <= SID.slice(7, 13)) return;
+    store("cur:" + ME, { s: x.s, k: x.k });
+    if (!S) location.reload();
+  }).catch(function () {});
+}
+// 通知の service worker が読む状態（Cache Storage に置く。service worker は localStorage を読めない）
+function saveState() {
+  if (!PERIOD || !P || !window.caches) return;
+  var plans = {};
+  P.books.forEach(function (bk) { var pl = store(planKey(bk)); if (pl) plans[bk.b] = { date: todayIso(), rows: pl.rows }; });
+  var snap = { test: P.test, bookOf: BOOK, fsrs: fsrsAll(), plans: plans, url: location.href,
+               books: P.books.map(function (bk) { return { b: bk.b, label: bk.label, rows: bk.words.map(function (w) { return w[5]; }) }; }) };
+  caches.open("wc-state").then(function (c) {
+    return c.put("state.json", new Response(JSON.stringify(snap), { headers: { "Content-Type": "application/json" } }));
+  }).catch(function () {});
+  var total = wcLeft(snap).reduce(function (a, x) { return a + x.n; }, 0);
+  if (navigator.setAppBadge && window.Notification && Notification.permission === "granted") {
+    (total ? navigator.setAppBadge(total) : navigator.clearAppBadge()).catch(function () {});
+  }
+  // 残りの数を通知サーバーへ（0 の日は通知しない。変わったときだけ送る）
+  var sent = store("left:sent"), now = todayIso() + ":" + total;
+  if (store("push:on") && sent !== now) {
+    post("/left", { c: ME, d: todayIso(), n: total }).then(function () { store("left:sent", now); }).catch(function () {});
+  }
+}
+function post(path, body) {
+  return fetch(NOTIFY + path, { method: "POST", body: JSON.stringify(body) }).then(function (r) { if (!r.ok) throw new Error("http"); return r; });
+}
+function standalone() { return (window.matchMedia && matchMedia("(display-mode: standalone)").matches) || navigator.standalone === true; }
+function isIOS() { return /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1); }
+var SWREG = null;
+function startPush() {
+  if (!("serviceWorker" in navigator)) return;
+  navigator.serviceWorker.register("sw.js").then(function (reg) { SWREG = reg; notifyBox(); }).catch(function () {});
+}
+function notifyBox() {
+  var box = $("notify"); box.innerHTML = ""; box.style.display = "none";
+  if (!PERIOD || !("serviceWorker" in navigator)) return;
+  if (!("PushManager" in window)) {
+    if (isIOS() && !standalone()) {
+      box.textContent = "ホーム画面に追加すると、毎日 " + NOTIFY_HOUR + " 時に残りの数が通知で届く（下の共有ボタン →「ホーム画面に追加」→ ホーム画面のアイコンから開く）";
+      box.style.display = "block";
+    }
+    return;
+  }
+  box.style.display = "block";
+  if (Notification.permission === "denied") { box.textContent = "通知がオフになっている。設定アプリ →「通知」→「単語チェック」でオンにしてね"; return; }
+  var on = store("push:on") && Notification.permission === "granted";
+  box.appendChild(el("div", null, on ? "毎日 " + NOTIFY_HOUR + " 時に残りの数を通知中（終わった日は来ない）" : "毎日 " + NOTIFY_HOUR + " 時に、残りの数を通知で受け取れる"));
+  var b = el("button", null, on ? "通知をやめる" : "通知をオンにする");
+  b.onclick = function () { b.disabled = true; (on ? pushOff() : pushOn()).then(notifyBox, function () { b.disabled = false; b.textContent = "うまくいかなかった。もう一回"; }); };
+  box.appendChild(b);
+}
+function pushOn() {
+  return Notification.requestPermission().then(function (p) {
+    if (p !== "granted") { notifyBox(); throw new Error("denied"); }
+    return navigator.serviceWorker.ready;
+  }).then(function (reg) {
+    return reg.pushManager.getSubscription().then(function (sub) {
+      return sub || reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64u(VAPID) });
+    });
+  }).then(function (sub) {
+    return post("/sub", { c: ME, sub: sub.toJSON() });
+  }).then(function () { store("push:on", true); store("left:sent", ""); saveState(); });
+}
+function pushOff() {
+  return navigator.serviceWorker.ready.then(function (reg) { return reg.pushManager.getSubscription(); }).then(function (sub) {
+    if (!sub) return;
+    var ep = sub.endpoint;
+    return sub.unsubscribe().then(function () { return post("/unsub", { c: ME, endpoint: ep }).catch(function () {}); });
+  }).then(function () { store("push:on", false); });
+}
+
 // ================================================================ 送信（待たせない・届かなければ端末に残して送り直す）
 var PENDING = "wordcheck_pending";
 function pending() { return store(PENDING) || []; }
@@ -396,17 +508,17 @@ function commit() {
   store(PENDING, pending().concat([{ t: Date.now() + Math.random(), body: body }]));
   flush();
 }
-document.addEventListener("visibilitychange", function () { if (document.visibilityState === "hidden") commit(); });
+document.addEventListener("visibilitychange", function () { if (document.visibilityState === "hidden") { commit(); saveState(); } });
 flush();
 
 // ================================================================ 読み込み
 function b64u(s) { s = s.replace(/-/g, "+").replace(/_/g, "/"); while (s.length % 4) s += "="; var b = atob(s), u = new Uint8Array(b.length); for (var j = 0; j < b.length; j++) u[j] = b.charCodeAt(j); return u; }
-function loadLocal() {
-  return fetch("d/" + SID + ".txt", { cache: "no-cache" })   // 同じ QR のデータを作り直したとき古いのが出ないように
+function loadLocal(id, key) {
+  return fetch("d/" + id + ".txt", { cache: "no-cache" })   // 同じ QR のデータを作り直したとき古いのが出ないように
     .then(function (r) { if (!r.ok) throw new Error("nf"); return r.text(); })
     .then(function (t) {
       var raw = b64u(t.trim());
-      return crypto.subtle.importKey("raw", b64u(KEY), "AES-GCM", false, ["decrypt"])
+      return crypto.subtle.importKey("raw", b64u(key), "AES-GCM", false, ["decrypt"])
         .then(function (k) { return crypto.subtle.decrypt({ name: "AES-GCM", iv: raw.slice(0, 12) }, k, raw.slice(12)); });
     })
     .then(function (buf) { return JSON.parse(new TextDecoder().decode(buf)); });
@@ -416,7 +528,7 @@ if (!/^[0-9a-z]{23}$/.test(SID)) {
   show("この QR のデータが見つからない。先生に知らせてね");
 } else {
   screen("msg");
-  (KEY ? loadLocal().catch(function (e) { if (PERIOD) throw e; return loadApi(); }) : loadApi())
+  (KEY ? loadLocal(SID, KEY).catch(function (e) { if (PERIOD) throw e; return loadApi(); }) : loadApi())
     .then(function (d) {
       if (PERIOD) {
         if (!d.books) { show("古い QR です。先生に新しい QR をもらってね"); return; }
@@ -424,7 +536,7 @@ if (!/^[0-9a-z]{23}$/.test(SID)) {
         // 範囲の語と、前の期間の語（復習に出る）の索引
         Object.keys(P.cards || {}).forEach(function (row) { var c = P.cards[row]; INDEX[row] = [0, c[1], c[2], c[3], c[4], +row]; BOOK[row] = c[0]; });
         P.books.forEach(function (bk) { bk.words.forEach(function (w) { INDEX[w[5]] = w; BOOK[w[5]] = bk.b; }); });
-        fsrsSeed(); hub(); return;
+        fsrsSeed(); store("cur:" + ME, { s: SID, k: KEY }); hub(); checkLatest(d.ptr); startPush(); return;
       }
       var bk = { b: SID.charAt(6), label: d.title, words: d.words };
       begin(bk, "today", d.words, 1);
