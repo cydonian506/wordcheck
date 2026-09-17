@@ -162,8 +162,9 @@ function render(dayList) {
   if (!ORDER.length) main.appendChild(el("div", "msg", "生徒がいない。QR を読み直してね"));
 }
 function studentBlock(c, sessions, today, open) {
-  var since = DATA.since[c] ? new Date(DATA.since[c]).getTime() : 0;
-  sessions = sessions.filter(function (s) { return (s.ended || s.started) >= since; })
+  var since = DATA.since[c] ? new Date(DATA.since[c]).getTime() : 0, ids = {};
+  // 同じ回が二重に届いていることがある（送り直し）→ id で 1 つにする
+  sessions = sessions.filter(function (s) { if (ids[s.id]) return false; ids[s.id] = 1; return (s.ended || s.started) >= since; })
     .sort(function (a, b) { return (a.ended || 0) - (b.ended || 0); });
   var periods = DATA.students[c] || [];
   // 語の索引（全期間）
