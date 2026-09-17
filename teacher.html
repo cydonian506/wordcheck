@@ -1,0 +1,353 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#f4f4f6">
+<title>単語チェック 講師</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="単語チェック講師">
+<!--
+  単語チェックの講師用（2026-09-17 本人決定）：生徒ごとの進み具合をスマホで見る＋生徒が回を終えたら通知。
+  - 記録は通知サーバー（Cloudflare Worker）の日ごとの記録（生徒コード・行番号・○✕・時間）。氏名は無い
+  - 範囲と語は d/<講師ID>.txt（暗号化、weekly_paper.py の write_teacher_data）
+  - 氏名・合言葉・鍵はアドレスの # の後ろだけ（サーバーに送られない）。admin.py --teacher-qr の QR で渡す
+  - 集計は admin.py（手元の管理画面）と同じ考え方
+-->
+<style>
+:root{--bg:#f4f4f6;--card:#fff;--ink:#1c1c22;--sub:#6e6e78;--line:#e2e2e8;--ok:#1a9d5c;--ng:#d93d4a;--acc:#2f6fdf;--warn:#b86e00}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{max-width:100%;overflow-x:hidden}
+body{margin:0;font-family:-apple-system,"Hiragino Sans","Hiragino Kaku Gothic ProN",sans-serif;color:var(--ink);background:var(--bg)}
+button{font-family:inherit;color:inherit}
+header{padding:calc(12px + env(safe-area-inset-top)) 16px 8px;display:flex;align-items:center;gap:8px}
+header h1{flex:1;margin:0;font-size:18px}
+header button{border:1px solid var(--line);background:var(--card);border-radius:8px;padding:6px 10px;font-size:14px}
+#meta{padding:0 16px;font-size:12px;color:var(--sub)}
+#notice{margin:10px 16px 0;border:1px dashed var(--line);border-radius:10px;padding:10px;font-size:14px;color:var(--sub);display:none}
+#notice button{display:block;width:100%;margin-top:8px;border:1px solid var(--line);border-radius:10px;padding:10px;font-size:15px;font-weight:600;background:var(--card)}
+main{padding:10px 16px 40px}
+.msg{padding:60px 0;text-align:center;color:var(--sub)}
+details.st{background:var(--card);border:1px solid var(--line);border-radius:12px;margin-bottom:12px;overflow:hidden}
+details.st>summary{list-style:none;padding:14px;cursor:pointer}
+details.st>summary::-webkit-details-marker{display:none}
+.sh{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.sh .nm{font-size:18px;font-weight:700}
+.sh .today{font-size:14px;font-variant-numeric:tabular-nums}
+.sl{margin-top:4px;font-size:13px;color:var(--sub);font-variant-numeric:tabular-nums}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.chip{font-size:12px;border-radius:999px;padding:2px 9px;border:1px solid var(--line);font-variant-numeric:tabular-nums}
+.chip.ok{color:var(--ok);border-color:var(--ok)}
+.chip.ng{color:var(--ng);border-color:var(--ng)}
+.chip.warn{color:var(--warn);border-color:var(--warn)}
+.body{padding:0 14px 14px}
+.bk{border-top:1px solid var(--line);padding-top:12px;margin-top:12px}
+.bk h3{margin:0;font-size:16px}
+.bk .rng{font-size:12px;color:var(--sub);margin-top:2px}
+.kv{display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin-top:10px}
+.kv div{background:var(--bg);border-radius:8px;padding:8px}
+.kv b{display:block;font-size:20px;font-variant-numeric:tabular-nums}
+.kv span{font-size:11px;color:var(--sub)}
+.bar{height:6px;border-radius:3px;background:var(--line);overflow:hidden;margin-top:4px}
+.bar>div{height:100%;background:var(--ok)}
+table{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums;margin-top:10px}
+th{font-size:11px;color:var(--sub);font-weight:600;text-align:right;padding:4px 2px;border-bottom:1px solid var(--line)}
+td{text-align:right;padding:5px 2px;border-bottom:1px solid var(--line)}
+th:first-child,td:first-child{text-align:left}
+td.tag{color:var(--sub);text-align:center}
+tr.today td{font-weight:700}
+tr.future td{color:#b0b0b8}
+tr.miss td{color:var(--ng)}
+.note{font-size:11px;color:var(--sub);margin-top:4px;line-height:1.5}
+.weak{margin-top:10px}
+.weak h4{margin:0 0 4px;font-size:13px}
+.wk{display:flex;gap:8px;font-size:13px;padding:5px 0;border-bottom:1px solid var(--line)}
+.wk .no{color:var(--sub);width:44px;flex:none;font-variant-numeric:tabular-nums}
+.wk .w{font-weight:600;flex:none;max-width:40%;word-break:break-all}
+.wk .m{color:var(--sub);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wk .x{color:var(--ng);flex:none;font-variant-numeric:tabular-nums}
+.recent{margin-top:10px}
+.recent .r{font-size:12px;color:var(--sub);padding:3px 0;font-variant-numeric:tabular-nums}
+</style>
+</head>
+<body>
+<header><h1>単語チェック 講師</h1><button id="reload">更新</button></header>
+<div id="meta"></div>
+<div id="notice"></div>
+<main id="main"><div class="msg">読み込み中…</div></main>
+<script src="left.js"></script>
+<script>
+var NOTIFY = "https://wordcheck-notify.wc30df6df0.workers.dev";
+var VAPID = "BP7_JwgCCmh-V3y54PnC3u9K5KV1RZZWYuIvhTfC1a_X6v7ry_OkzieJ2P4fn8-CM5tS7HLt5s-6V_jt5XYkW-Q";
+var WD = "日月火水木金土", DAYS_BACK = 60, WEAK_SHOW = 10;
+var Q = new URLSearchParams(location.search), H = new URLSearchParams(location.hash.slice(1));
+var TID = (Q.get("s") || "").toLowerCase(), KEY = H.get("k") || "", TOKEN = H.get("t") || "";
+// 氏名：n=コード:氏名,コード:氏名（並びはこの順）
+var ORDER = [], NAMES = {};
+(H.get("n") || "").split(",").forEach(function (x) {
+  var i = x.indexOf(":"); if (i < 0) return;
+  var c = x.slice(0, i), n = x.slice(i + 1);
+  if (/^[0-9a-f]{6}$/.test(c)) { ORDER.push(c); NAMES[c] = n; }
+});
+var $ = function (id) { return document.getElementById(id); };
+function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+function store(k, v) { try { if (v === undefined) return JSON.parse(localStorage.getItem(k) || "null"); localStorage.setItem(k, JSON.stringify(v)); } catch (e) { return null; } }
+function iso(d) { return d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).slice(-2) + "-" + ("0" + d.getDate()).slice(-2); }
+function addDays(s, n) { var d = new Date(s + "T00:00:00"); d.setDate(d.getDate() + n); return iso(d); }
+function days(a, b) { return Math.round((new Date(b + "T00:00:00") - new Date(a + "T00:00:00")) / 86400000); }
+function md(s) { var d = new Date(s + "T00:00:00"); return (d.getMonth() + 1) + "/" + d.getDate() + "（" + WD[d.getDay()] + "）"; }
+function hm(ms) { var d = new Date(ms); return (d.getMonth() + 1) + "/" + d.getDate() + " " + ("0" + d.getHours()).slice(-2) + ":" + ("0" + d.getMinutes()).slice(-2); }
+function pct(x) { return Math.round(x * 100) + "%"; }
+function b64u(s) { s = s.replace(/-/g, "+").replace(/_/g, "/"); while (s.length % 4) s += "="; var b = atob(s), u = new Uint8Array(b.length); for (var j = 0; j < b.length; j++) u[j] = b.charCodeAt(j); return u; }
+function post(path, body) {
+  return fetch(NOTIFY + path, { method: "POST", body: JSON.stringify(body) }).then(function (r) { return r.json(); });
+}
+
+// ================================================================ FSRS（page/index.html・weekly_paper.py と同じ式）
+var FW = [0.4872, 1.4003, 3.7145, 13.8206, 5.1618, 1.2298, 0.8975, 0.031, 1.6474, 0.1367, 1.0461, 2.1072, 0.0793, 0.3246, 1.587, 0.2272, 2.8755];
+function clampD(d) { return Math.min(10, Math.max(1, d)); }
+function retr(t, s) { return Math.pow(1 + 19 / 81 * t / s, -0.5); }
+function fsrsNext(st, g, t) {
+  if (!st) return [FW[g - 1], clampD(FW[4] - FW[5] * (g - 3))];
+  var s = st[0], d = st[1], r = retr(Math.max(0, t), s);
+  var d2 = clampD(FW[7] * FW[4] + (1 - FW[7]) * (d - FW[6] * (g - 3)));
+  var s2 = g === 1
+    ? Math.min(s, FW[11] * Math.pow(d2, -FW[12]) * (Math.pow(s + 1, FW[13]) - 1) * Math.exp(FW[14] * (1 - r)))
+    : s * (Math.exp(FW[8]) * (11 - d2) * Math.pow(s, -FW[9]) * (Math.exp(FW[10] * (1 - r)) - 1) + 1);
+  return [Math.max(0.1, s2), d2];
+}
+
+// ================================================================ 読み込み
+var DATA = null;
+function loadData() {
+  return fetch("d/" + TID + ".txt?t=" + Date.now(), { cache: "no-store" })
+    .then(function (r) { if (!r.ok) throw new Error("nf"); return r.text(); })
+    .then(function (t) {
+      var raw = b64u(t.trim());
+      return crypto.subtle.importKey("raw", b64u(KEY), "AES-GCM", false, ["decrypt"])
+        .then(function (k) { return crypto.subtle.decrypt({ name: "AES-GCM", iv: raw.slice(0, 12) }, k, raw.slice(12)); });
+    })
+    .then(function (buf) { return JSON.parse(new TextDecoder().decode(buf)); });
+}
+function loadRecs() {
+  return post("/t/recs", { token: TOKEN, since: addDays(iso(new Date()), -DAYS_BACK) }).then(function (d) {
+    if (!d.ok) throw new Error("auth");
+    return d.days;
+  });
+}
+function refresh() {
+  $("meta").textContent = "読み込み中…";
+  Promise.all([loadData(), loadRecs()]).then(function (x) {
+    DATA = x[0]; render(x[1]);
+    $("meta").textContent = "更新 " + hm(Date.now()) + "・範囲のデータ " + DATA.made.replace("T", " ");
+  }).catch(function (e) {
+    $("meta").textContent = "";
+    $("main").innerHTML = "";
+    $("main").appendChild(el("div", "msg", e.message === "auth" ? "合言葉が合わない。QR を読み直してね" : "読み込めなかった。電波のいい所で「更新」"));
+  });
+}
+
+// ================================================================ 集計
+function render(dayList) {
+  var today = iso(new Date()), main = $("main"), opened = {};
+  [].forEach.call(document.querySelectorAll("details.st"), function (d) { if (d.open) opened[d.dataset.c] = 1; });
+  main.innerHTML = "";
+  var byCode = {};
+  dayList.forEach(function (x) { (byCode[x[0]] = byCode[x[0]] || []).push.apply(byCode[x[0]], x[2]); });
+  ORDER.forEach(function (c) { main.appendChild(studentBlock(c, byCode[c] || [], today, opened[c])); });
+  if (!ORDER.length) main.appendChild(el("div", "msg", "生徒がいない。QR を読み直してね"));
+}
+function studentBlock(c, sessions, today, open) {
+  var since = DATA.since[c] ? new Date(DATA.since[c]).getTime() : 0;
+  sessions = sessions.filter(function (s) { return (s.ended || s.started) >= since; })
+    .sort(function (a, b) { return (a.ended || 0) - (b.ended || 0); });
+  var periods = DATA.students[c] || [];
+  // 語の索引（全期間）
+  var W = {};
+  periods.forEach(function (p) {
+    Object.keys(p.cards || {}).forEach(function (r) { var x = p.cards[r]; W[r] = { b: x[0], no: x[1], w: x[2], m: x[3] }; });
+    p.books.forEach(function (bk) { bk.words.forEach(function (x) { W[x[0]] = { b: bk.b, no: x[1], w: x[2], m: x[3] }; }); });
+  });
+  // 1 回答ずつ（時刻順）と、FSRS の計算し直し
+  var recs = [];
+  sessions.forEach(function (s) {
+    var d = iso(new Date(s.ended || s.started));
+    s.items.forEach(function (it) { recs.push({ d: d, row: String(it[0]), ok: !!it[1], b: s.b }); });
+  });
+  var st = {}, last = {}, first = {}, firsts = [];
+  recs.forEach(function (r) {
+    if (last[r.row] === r.d) return;
+    st[r.row] = fsrsNext(st[r.row], r.ok ? 3 : 1, r.row in last ? days(last[r.row], r.d) : 0);
+    last[r.row] = r.d;
+    if (!(r.row in first)) first[r.row] = r.d;
+    firsts.push(r);
+  });
+  // いまの期間（渡した日が今日以前で一番新しい）
+  var cur = null;
+  periods.forEach(function (p) { if (p.handout <= today && (!cur || p.handout >= cur.handout)) cur = p; });
+  var det = el("details", "st"); det.dataset.c = c; if (open) det.open = true;
+  var sum = el("summary"), sh = el("div", "sh");
+  var todayN = recs.filter(function (r) { return r.d === today; }).length;
+  sh.appendChild(el("span", "nm", NAMES[c]));
+  sh.appendChild(el("span", "today", todayN ? "今日 " + todayN + " 回答" : "今日 まだ"));
+  sum.appendChild(sh);
+  var lastS = sessions[sessions.length - 1];
+  sum.appendChild(el("div", "sl", (lastS ? "最後 " + hm(lastS.ended || lastS.started) : "記録なし") +
+    (cur ? "・テスト " + md(cur.test) + "（あと " + Math.max(0, days(today, cur.test)) + " 日）" : "・期間なし")));
+  var chips = el("div", "chips"), body = el("div", "body");
+  if (cur) cur.books.forEach(function (bk) {
+    var info = bookBlock(bk, cur, W, st, last, first, firsts, recs, today);
+    chips.appendChild(el("span", "chip " + info.cls, (bk.b === "k" ? "古文 " : "英 ") + info.chip));
+    body.appendChild(info.node);
+  });
+  sum.appendChild(chips);
+  det.appendChild(sum);
+  // 最近の回
+  var rc = el("div", "recent"); rc.appendChild(el("h4", null, "最近の回"));
+  var kinds = ["今日の分", "もっとやる", "ミスだけ", "もう一周", "苦手語"];
+  sessions.slice(-8).reverse().forEach(function (s) {
+    var ok = s.items.filter(function (it) { return it[1]; }).length;
+    rc.appendChild(el("div", "r", hm(s.ended || s.started) + "　" + (s.b === "k" ? "古文" : "英") + "・" + (kinds[s.day] || "") +
+      "・" + s.round + "周目　" + s.items.length + " 回答（○ " + ok + "）"));
+  });
+  if (!sessions.length) rc.appendChild(el("div", "r", "まだ無い"));
+  body.appendChild(rc);
+  det.appendChild(body);
+  return det;
+}
+function bookBlock(bk, p, W, st, last, first, firsts, recs, today) {
+  var node = el("div", "bk"), rows = bk.words.map(function (x) { return String(x[0]); });
+  var tn = bk.tn != null ? bk.tn : rows.length, testRows = rows.slice(rows.length - tn);
+  var inR = {}; rows.forEach(function (r) { inR[r] = 1; });
+  node.appendChild(el("h3", null, bk.label));
+  node.appendChild(el("div", "rng", bk.range + "・渡した日 " + md(p.handout)));
+  var ph = wcPhase(p.handout, p.test, today);
+  var hw = Math.max(1, days(p.handout, p.test) - 1), intro = Math.max(1, Math.min(hw - 1, Math.ceil(hw * 0.5)));
+  var n = rows.length, seen = rows.filter(function (r) { return first[r]; }).length;
+  var seenY = rows.filter(function (r) { return first[r] && first[r] < today; }).length;
+  var k = Math.max(1, days(p.handout, today));
+  var goalY = today <= p.handout ? 0 : Math.min(n, Math.ceil(n * Math.min(1, (k - 1) / intro)));
+  var behind = Math.max(0, goalY - seenY);
+  var pred = testRows.reduce(function (a, r) { return a + (st[r] ? retr(Math.max(0, days(last[r], p.test)), st[r][0]) : 0); }, 0) / Math.max(1, testRows.length);
+  var kv = el("div", "kv");
+  function box(big, lab, barW) {
+    var d = el("div"); d.appendChild(el("b", null, big)); d.appendChild(el("span", null, lab));
+    if (barW != null) { var b = el("div", "bar"), f = el("div"); f.style.width = barW + "%"; b.appendChild(f); d.appendChild(b); }
+    kv.appendChild(d);
+  }
+  box(seen + " / " + n, "範囲でやった語", n ? seen / n * 100 : 0);
+  box(pct(pred), "テスト日の予測（想起率の平均）");
+  box(behind ? "遅れ " + behind : "順調", { intro: "新しい語の期間（" + intro + " 日で出し切る）", review: "復習の期間", final: "テスト前日の総復習" }[ph.kind]);
+  var wrong = firsts.filter(function (r) { return r.d === today && inR[r.row]; });
+  box(wrong.length ? pct(wrong.filter(function (r) { return r.ok; }).length / wrong.length) : "—", "今日の ○率（1 回目）");
+  node.appendChild(kv);
+  // 日ごと
+  var ans = {}, fst = {}, oks = {}, nw = {};
+  recs.forEach(function (r) { if (r.b === bk.b) ans[r.d] = (ans[r.d] || 0) + 1; });
+  firsts.forEach(function (r) {
+    if (r.b !== bk.b) return;
+    fst[r.d] = (fst[r.d] || 0) + 1; oks[r.d] = (oks[r.d] || 0) + (r.ok ? 1 : 0);
+    if (first[r.row] === r.d && inR[r.row]) nw[r.d] = (nw[r.d] || 0) + 1;
+  });
+  var tb = el("table"), hr = el("tr");
+  ["日", "", "回答", "語", "新", "○率"].forEach(function (x) { hr.appendChild(el("th", null, x)); });
+  tb.appendChild(hr);
+  for (var d = p.handout; d < p.test; d = addDays(d, 1)) {
+    var a = ans[d] || 0, cls = d === today ? "today" : d > today ? "future" : (d > p.handout && !a ? "miss" : "");
+    var tr = el("tr", cls), tag = { intro: "新", review: "復", final: "総" }[wcPhase(p.handout, p.test, d).kind];
+    [md(d), tag, a || "", fst[d] || "", nw[d] || "", fst[d] ? pct(oks[d] / fst[d]) : "—"].forEach(function (v, i) {
+      tr.appendChild(el("td", i === 1 ? "tag" : null, String(v)));
+    });
+    tb.appendChild(tr);
+  }
+  node.appendChild(tb);
+  node.appendChild(el("div", "note", "新＝新しい語の期間／復＝復習／総＝前日の総復習。回答＝全周、語＝その日の 1 回目（FSRS に効く）、新＝初めての語。赤＝やっていない日"));
+  // 苦手語
+  var ng = {}, cnt = {};
+  firsts.forEach(function (r) { if (r.b !== bk.b) return; cnt[r.row] = (cnt[r.row] || 0) + 1; if (!r.ok) ng[r.row] = (ng[r.row] || 0) + 1; });
+  var weak = Object.keys(ng).filter(function (r) { return W[r]; }).sort(function (a, b) {
+    var ra = st[a] ? retr(Math.max(0, days(last[a], today)), st[a][0]) : 0, rb = st[b] ? retr(Math.max(0, days(last[b], today)), st[b][0]) : 0;
+    return ng[b] - ng[a] || ra - rb;
+  }).slice(0, WEAK_SHOW);
+  var wk = el("div", "weak"); wk.appendChild(el("h4", null, "苦手語（✕ の多い順）"));
+  weak.forEach(function (r) {
+    var x = W[r], line = el("div", "wk");
+    line.appendChild(el("span", "no", "No." + x.no)); line.appendChild(el("span", "w", x.w));
+    line.appendChild(el("span", "m", (x.m || "").split("／")[0]));
+    line.appendChild(el("span", "x", "✕" + ng[r] + "/" + cnt[r] + "・次 " + md(addDays(last[r], Math.max(1, Math.round(st[r][0]))))));
+    wk.appendChild(line);
+  });
+  if (!weak.length) wk.appendChild(el("div", "note", "まだ無い"));
+  node.appendChild(wk);
+  var chip = ph.kind === "final" ? "総復習 " + pct(pred) : seen + "/" + n + (behind ? " 遅れ" + behind : "");
+  return { node: node, chip: chip, cls: behind ? "warn" : seen === n ? "ok" : "" };
+}
+
+// ================================================================ 通知
+function saveTeacher() {
+  if (!window.caches) return;
+  caches.open("wc-teacher").then(function (c) {
+    return c.put("teacher.json", new Response(JSON.stringify({ names: NAMES, url: location.href }), { headers: { "Content-Type": "application/json" } }));
+  }).catch(function () {});
+}
+function standalone() { return (window.matchMedia && matchMedia("(display-mode: standalone)").matches) || navigator.standalone === true; }
+function noticeBox() {
+  var box = $("notice"); box.innerHTML = ""; box.style.display = "none";
+  if (!("serviceWorker" in navigator)) return;
+  if (!("PushManager" in window)) {
+    if (/iPhone|iPad|iPod/.test(navigator.userAgent) && !standalone()) {
+      box.style.display = "block";
+      box.textContent = "ホーム画面に追加すると、生徒が回を終えたとき通知が届く（共有 →「ホーム画面に追加」→ アイコンから開く）";
+    }
+    return;
+  }
+  if (Notification.permission === "denied") {
+    box.style.display = "block"; box.textContent = "通知がオフ。設定アプリ →「通知」でオンにしてね"; return;
+  }
+  var on = store("tpush:on") && Notification.permission === "granted";
+  box.style.display = "block";
+  box.appendChild(el("div", null, on ? "生徒が回を終えたら通知中（同じ生徒は 10 分に 1 回まで）" : "生徒が回を終えたら通知を受け取る"));
+  var b = el("button", null, on ? "通知をやめる" : "通知をオンにする");
+  b.onclick = function () {
+    b.disabled = true;
+    (on ? pushOff() : pushOn()).then(noticeBox, function () { b.disabled = false; b.textContent = "うまくいかなかった。もう一回"; });
+  };
+  box.appendChild(b);
+}
+function pushOn() {
+  return Notification.requestPermission().then(function (p) {
+    if (p !== "granted") throw new Error("denied");
+    return navigator.serviceWorker.ready;
+  }).then(function (reg) {
+    return reg.pushManager.getSubscription().then(function (sub) {
+      return sub || reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64u(VAPID) });
+    });
+  }).then(function (sub) {
+    return post("/t/sub", { token: TOKEN, sub: sub.toJSON() });
+  }).then(function (r) { if (!r.ok) throw new Error("sub"); store("tpush:on", true); });
+}
+function pushOff() {
+  return navigator.serviceWorker.ready.then(function (reg) { return reg.pushManager.getSubscription(); }).then(function (sub) {
+    store("tpush:on", false);
+    // 同じ端末で生徒の通知も使っているかもしれないので、購読そのものは消さずに講師の登録だけ外す
+    if (sub) return post("/t/unsub", { token: TOKEN, endpoint: sub.endpoint });
+  });
+}
+
+// ================================================================ 起動
+if (!/^[0-9a-z]{17}$/.test(TID) || !KEY || !TOKEN) {
+  $("main").innerHTML = ""; $("main").appendChild(el("div", "msg", "アドレスが足りない。QR を読み直してね"));
+} else {
+  saveTeacher();
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").then(noticeBox).catch(function () {});
+  $("reload").onclick = refresh;
+  document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") refresh(); });
+  refresh();
+}
+</script>
+</body>
+</html>

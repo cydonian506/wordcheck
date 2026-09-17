@@ -25,7 +25,29 @@ function readState() {
     .catch(function () { return null; });
 }
 
+// 講師アプリ（teacher.html）が置く氏名の対応表（端末の中だけ）
+function readTeacher() {
+  return caches.open("wc-teacher")
+    .then(function (c) { return c.match("teacher.json"); })
+    .then(function (r) { return r ? r.json() : null; })
+    .catch(function () { return null; });
+}
+
 self.addEventListener("push", function (e) {
+  var msg = null;
+  try { msg = e.data ? e.data.json() : null; } catch (err) { msg = null; }
+  if (msg && msg.t === "rec") {
+    // 講師への通知：生徒が回を終えた（氏名は端末の対応表から）
+    e.waitUntil(readTeacher().then(function (tc) {
+      var name = (tc && tc.names && tc.names[msg.c]) || "生徒 " + msg.c;
+      var kinds = ["今日の分", "もっとやる", "ミスだけ", "もう一周", "苦手語"];
+      var body = (msg.b === "k" ? "古文" : "英") + "・" + (kinds[msg.k] || "") + "　" + msg.n + " 回答（○ " + msg.ok + "）";
+      return self.registration.showNotification(name + " が単語チェック", {
+        body: body, tag: "rec-" + msg.c, data: { url: tc && tc.url }
+      });
+    }));
+    return;
+  }
   e.waitUntil(readState().then(function (snap) {
     var body = "今日の単語チェックをやろう", total = 0;
     if (snap) {

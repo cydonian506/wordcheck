@@ -745,7 +745,11 @@ var PENDING = "wordcheck_pending";
 function pending() { return store(PENDING) || []; }
 function flush() {
   pending().forEach(function (item) {
-    fetch(API, { method: "POST", mode: "no-cors", keepalive: true, body: JSON.stringify(item.body) })
+    // to: "w" は通知サーバー（講師アプリ・講師への通知、2026-09-17）。それ以外は Apps Script（Drive の元記録）
+    var req = item.to === "w"
+      ? fetch(NOTIFY + "/rec", { method: "POST", keepalive: true, body: JSON.stringify(item.body) }).then(function (r) { if (!r.ok) throw new Error("http"); })
+      : fetch(API, { method: "POST", mode: "no-cors", keepalive: true, body: JSON.stringify(item.body) });
+    req
       .then(function () { store(PENDING, pending().filter(function (x) { return x.t !== item.t; })); })
       .catch(function () {});
   });
@@ -767,7 +771,9 @@ function commit() {
     S.sent = true;
     body = { s: SID, miss: missIdx().map(function (wi) { return S.deck[wi][0]; }) };
   }
-  store(PENDING, pending().concat([{ t: Date.now() + Math.random(), body: body }]));
+  var add = [{ t: Date.now() + Math.random(), body: body }];
+  if (PERIOD) add.push({ t: Date.now() + Math.random(), to: "w", body: { c: ME, p: SID, s: body } });
+  store(PENDING, pending().concat(add));
   flush();
 }
 document.addEventListener("visibilitychange", function () {
