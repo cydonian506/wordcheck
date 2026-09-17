@@ -1,4 +1,6 @@
-// 単語チェックの service worker：毎日の通知だけを扱う（ページの読み込みには手を出さない）
+// 単語チェックの service worker：毎日の通知と、ページを常に最新で開くこと
+// ホーム画面のアプリは HTTP のキャッシュで古いページが出続けるので（2026-09-17 本人指摘）、
+// ページ本体と left.js は毎回ネットから取り直す。つながらなければキャッシュ。
 // 通知サーバー（Cloudflare Worker）から届いたら、端末に残した状態から「今日の残り」を数えて出す。
 importScripts("left.js");
 
@@ -6,6 +8,15 @@ var STATE_CACHE = "wc-state", STATE_URL = "state.json";
 
 self.addEventListener("install", function () { self.skipWaiting(); });
 self.addEventListener("activate", function (e) { e.waitUntil(self.clients.claim()); });
+
+self.addEventListener("fetch", function (e) {
+  var req = e.request, url = new URL(req.url);
+  if (req.method !== "GET" || url.origin !== location.origin) return;
+  var fresh = req.mode === "navigate" || /\/(left\.js|version\.txt)$/.test(url.pathname);
+  if (!fresh) return;
+  // navigate の Request は設定を付けて作り直せないので URL で取る（# の後ろはもともと送られない）
+  e.respondWith(fetch(req.url, { cache: "no-store", credentials: "same-origin" }).catch(function () { return fetch(req); }));
+});
 
 function readState() {
   return caches.open(STATE_CACHE)
