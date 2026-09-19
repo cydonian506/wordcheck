@@ -76,9 +76,40 @@ tr.miss td{color:var(--ng)}
 .wk .w{font-weight:600;flex:1;min-width:0;word-break:break-all}
 .wk .x{color:var(--ng);flex:none;font-size:12px;white-space:nowrap;font-variant-numeric:tabular-nums}
 .wk .m{color:var(--sub);font-size:12px;margin-top:2px;word-break:break-all}
-.recent h4{margin:0 0 4px;font-size:13px}
-.recent{margin-top:10px}
-.recent .r{font-size:12px;color:var(--sub);padding:3px 0;font-variant-numeric:tabular-nums}
+/* 上の一覧：誰がいつ最後にやったか＋直近 7 日の回答数 */
+.ov{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 10px;margin-bottom:12px}
+.ov h2{margin:0 4px 2px;font-size:15px}
+.ov .lat{margin:0 4px 6px;font-size:12px;color:var(--sub);line-height:1.5}
+.ov table{margin-top:4px}
+.ov col.n{width:30%}.ov col.d{width:10%}
+.ov th{text-align:center;line-height:1.2}
+.ov th:first-child{text-align:left}
+.ov td{text-align:center;padding:7px 1px}
+.ov td:first-child{text-align:left;white-space:normal;cursor:pointer}
+.ov .on{font-size:14px;font-weight:700;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ov .ol{font-size:11px;color:var(--sub);display:block;white-space:nowrap}
+.ov .ol.stale{color:var(--ng)}
+.ov td.z{color:#c8c8d0}
+.ov td.t{font-weight:700}
+.ov th.t{color:var(--ink)}
+/* 生徒ごとの直近 7 日の回（タップで ✕ の語） */
+.hist{margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
+.hist h4{margin:0 0 6px;font-size:14px}
+.hd{display:flex;justify-content:space-between;font-size:13px;font-weight:700;margin-top:10px;padding-bottom:3px;border-bottom:1px solid var(--line)}
+.hd .hn{font-weight:400;color:var(--sub);font-variant-numeric:tabular-nums}
+.hd.none{color:var(--ng)}
+.hd.none .hn{color:var(--ng)}
+.run{padding:7px 0;border-bottom:1px dashed var(--line);cursor:pointer;font-variant-numeric:tabular-nums}
+.run .r1{display:flex;justify-content:space-between;gap:8px;font-size:13px}
+.run .r1 .rt{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.run .r1 .rs{flex:none;white-space:nowrap}
+.run .r1 .rs.ng{color:var(--ng)}
+.run .r1 .rs.ok{color:var(--ok)}
+.run .r2{font-size:12px;color:var(--sub);margin-top:2px}
+.run .det{display:none;margin-top:6px;background:var(--bg);border-radius:8px;padding:4px 8px}
+.run.open .det{display:block}
+.run .det .wk:last-child{border-bottom:0}
+.run .det .all{font-size:12px;color:var(--ok);padding:6px 0}
 </style>
 </head>
 <body>
@@ -159,20 +190,136 @@ function refresh() {
 }
 
 // ================================================================ 集計
+var KINDS = ["今日の分", "もっとやる", "ミスだけ", "もう一周", "苦手語"], OPEN_RUNS = {};
 function render(dayList) {
   var today = iso(new Date()), main = $("main"), opened = {};
   [].forEach.call(document.querySelectorAll(".st.open"), function (d) { opened[d.dataset.c] = 1; });
   main.innerHTML = "";
   var byCode = {};
   dayList.forEach(function (x) { (byCode[x[0]] = byCode[x[0]] || []).push.apply(byCode[x[0]], x[2]); });
-  ORDER.forEach(function (c) { main.appendChild(studentBlock(c, byCode[c] || [], today, opened[c])); });
+  var ses = {};
+  ORDER.forEach(function (c) { ses[c] = prep(c, byCode[c] || []); });
+  if (ORDER.length) main.appendChild(overview(ses, today));
+  ORDER.forEach(function (c) { main.appendChild(studentBlock(c, ses[c], today, opened[c])); });
   if (!ORDER.length) main.appendChild(el("div", "msg", "生徒がいない。QR を読み直してね"));
 }
-function studentBlock(c, sessions, today, open) {
+function prep(c, sessions) {
   var since = DATA.since[c] ? new Date(DATA.since[c]).getTime() : 0, ids = {};
   // 同じ回が二重に届いていることがある（送り直し）→ id で 1 つにする
-  sessions = sessions.filter(function (s) { if (ids[s.id]) return false; ids[s.id] = 1; return (s.ended || s.started) >= since; })
+  return sessions.filter(function (s) { if (ids[s.id]) return false; ids[s.id] = 1; return (s.ended || s.started) >= since; })
     .sort(function (a, b) { return (a.ended || 0) - (b.ended || 0); });
+}
+// 1 回ぶん。アプリは途中で閉じると回を分けて送る（同じ started）→ 1 つにまとめる
+function runs(sessions) {
+  var m = {}, out = [];
+  sessions.forEach(function (s) {
+    var k = s.b + ":" + (s.started || s.id);
+    if (!m[k]) { m[k] = { b: s.b, day: s.day, round: s.round, started: s.started, ended: s.ended, items: [] }; out.push(m[k]); }
+    m[k].items = m[k].items.concat(s.items);
+    m[k].ended = Math.max(m[k].ended || 0, s.ended || 0);
+  });
+  out.forEach(function (r) {
+    // 同じ語が ✕ のあと何度も出る → 語ごとに 1 回目の ○✕ と ✕ の回数
+    var first = {}, miss = {}, order = [];
+    r.items.forEach(function (it) {
+      var row = String(it[0]);
+      if (!(row in first)) { first[row] = !!it[1]; order.push(row); }
+      if (!it[1]) miss[row] = (miss[row] || 0) + 1;
+    });
+    r.n = order.length; r.ok1 = order.filter(function (x) { return first[x]; }).length;
+    r.miss = miss; r.missRows = order.filter(function (x) { return miss[x]; }).sort(function (a, b) { return miss[b] - miss[a]; });
+    r.d = iso(new Date(r.ended || r.started));
+  });
+  return out.sort(function (a, b) { return (a.ended || 0) - (b.ended || 0); });
+}
+function whenLabel(ms, today) {
+  var d = iso(new Date(ms)), t = hm(ms).split(" ")[1], k = days(d, today);
+  return (k === 0 ? "今日 " : k === 1 ? "昨日 " : hm(ms).split(" ")[0] + " ") + t;
+}
+function runTitle(r) { return (r.b === "k" ? "古文" : "英") + "・" + (KINDS[r.day] || "") + (r.round > 1 ? "・" + r.round + "周目" : ""); }
+function overview(ses, today) {
+  var box = el("div", "ov"), d7 = [];
+  for (var i = 6; i >= 0; i--) d7.push(addDays(today, -i));
+  box.appendChild(el("h2", null, "直近 7 日"));
+  // いちばん最近やった人
+  var latest = null;
+  ORDER.forEach(function (c) {
+    var s = ses[c][ses[c].length - 1];
+    if (s && (!latest || (s.ended || s.started) > latest.t)) latest = { c: c, t: s.ended || s.started };
+  });
+  if (latest) {
+    var lr = runs(ses[latest.c]).pop();
+    box.appendChild(el("div", "lat", "最新：" + NAMES[latest.c] + "　" + whenLabel(latest.t, today) + "　" + runTitle(lr) + "　" + lr.ok1 + "/" + lr.n + " ○"));
+  }
+  var tb = el("table"), cg = el("colgroup"), hr = el("tr");
+  cg.appendChild(el("col", "n")); d7.forEach(function () { cg.appendChild(el("col", "d")); });
+  tb.appendChild(cg);
+  hr.appendChild(el("th", null, "最後にやった"));
+  d7.forEach(function (d) {
+    var th = el("th", d === today ? "t" : null), dt = new Date(d + "T00:00:00");
+    th.appendChild(el("div", null, String(dt.getDate()))); th.appendChild(el("div", null, WD[dt.getDay()]));
+    hr.appendChild(th);
+  });
+  tb.appendChild(hr);
+  ORDER.forEach(function (c) {
+    var tr = el("tr"), nm = el("td"), cnt = {}, s = ses[c], lastS = s[s.length - 1];
+    s.forEach(function (x) { var d = iso(new Date(x.ended || x.started)); cnt[d] = (cnt[d] || 0) + x.items.length; });
+    nm.appendChild(el("span", "on", NAMES[c]));
+    var lt = lastS ? lastS.ended || lastS.started : 0;
+    nm.appendChild(el("span", "ol" + (!lt || days(iso(new Date(lt)), today) >= 2 ? " stale" : ""), lt ? whenLabel(lt, today) : "記録なし"));
+    nm.onclick = function () {
+      var card = document.querySelector('.st[data-c="' + c + '"]');
+      if (!card) return;
+      card.classList.add("open"); card.querySelector(".arrow").textContent = "▲";
+      card.scrollIntoView({ behavior: "smooth", block: "start" });
+    };
+    tr.appendChild(nm);
+    d7.forEach(function (d) { tr.appendChild(el("td", cnt[d] ? (d === today ? "t" : null) : "z", cnt[d] ? String(cnt[d]) : "—")); });
+    tb.appendChild(tr);
+  });
+  box.appendChild(tb);
+  box.appendChild(el("div", "note", "数字＝その日の回答数（全周・両方の単語帳）。赤い日付＝2 日以上やっていない。名前を押すとその生徒へ"));
+  return box;
+}
+// 生徒の直近 7 日：日ごとに回を並べ、押すと ✕ だった語
+function history(c, sessions, W, today) {
+  var box = el("div", "hist"), rs = runs(sessions), byDay = {};
+  box.appendChild(el("h4", null, "直近 7 日の回（押すと ✕ の語）"));
+  rs.forEach(function (r) { (byDay[r.d] = byDay[r.d] || []).push(r); });
+  for (var i = 0; i < 7; i++) {
+    var d = addDays(today, -i), list = (byDay[d] || []).slice().reverse();
+    var ans = list.reduce(function (a, r) { return a + r.items.length; }, 0);
+    var hd = el("div", "hd" + (!list.length && i > 0 ? " none" : ""));
+    hd.appendChild(el("span", null, md(d)));
+    hd.appendChild(el("span", "hn", list.length ? list.length + " 回・回答 " + ans : i === 0 ? "まだ" : "やっていない"));
+    box.appendChild(hd);
+    list.forEach(function (r) { box.appendChild(runRow(c, r, W)); });
+  }
+  return box;
+}
+function runRow(c, r, W) {
+  var key = c + ":" + r.b + ":" + r.started, row = el("div", "run" + (OPEN_RUNS[key] ? " open" : ""));
+  var r1 = el("div", "r1"), ng = r.missRows.length;
+  r1.appendChild(el("span", "rt", hm(r.ended || r.started).split(" ")[1] + "　" + runTitle(r)));
+  r1.appendChild(el("span", "rs " + (ng ? "ng" : "ok"), "○" + r.ok1 + " ✕" + (r.n - r.ok1) + "（" + pct(r.n ? r.ok1 / r.n : 0) + "）"));
+  row.appendChild(r1);
+  var mins = r.started && r.ended ? Math.max(1, Math.round((r.ended - r.started) / 60000)) : 0;
+  row.appendChild(el("div", "r2", r.n + " 語・回答 " + r.items.length + (mins ? "・" + mins + " 分" : "") + (ng ? "・▼ ✕ " + ng + " 語" : "")));
+  var det = el("div", "det");
+  if (!ng) det.appendChild(el("div", "all", "全部 1 回目で ○"));
+  r.missRows.forEach(function (rw) {
+    var x = W[rw] || { no: "?", w: "（範囲外の語）", m: "" }, line = el("div", "wk"), l1 = el("div", "l1");
+    l1.appendChild(el("span", "no", "No." + x.no)); l1.appendChild(el("span", "w", x.w));
+    l1.appendChild(el("span", "x", "✕" + r.miss[rw]));
+    line.appendChild(l1);
+    line.appendChild(el("div", "m", (x.m || "").split("／")[0]));
+    det.appendChild(line);
+  });
+  row.appendChild(det);
+  row.onclick = function () { row.classList.toggle("open"); OPEN_RUNS[key] = row.classList.contains("open"); };
+  return row;
+}
+function studentBlock(c, sessions, today, open) {
   var periods = DATA.students[c] || [];
   // 語の索引（全期間）
   var W = {};
@@ -206,7 +353,7 @@ function studentBlock(c, sessions, today, open) {
   var arrow = el("span", "arrow", open ? "▲" : "▼"); sh.appendChild(arrow);
   sum.appendChild(sh);
   var lastS = sessions[sessions.length - 1];
-  sum.appendChild(el("div", "sl", (lastS ? "最後 " + hm(lastS.ended || lastS.started) : "記録なし") +
+  sum.appendChild(el("div", "sl", (lastS ? "最後 " + whenLabel(lastS.ended || lastS.started, today) : "記録なし") +
     (cur ? "・テスト " + md(cur.test) + "（あと " + Math.max(0, days(today, cur.test)) + " 日）" : "・期間なし")));
   var chips = el("div", "chips"), body = el("div", "body");
   if (cur) cur.books.forEach(function (bk) {
@@ -216,16 +363,8 @@ function studentBlock(c, sessions, today, open) {
   });
   sum.appendChild(chips);
   det.appendChild(sum);
-  // 最近の回
-  var rc = el("div", "recent"); rc.appendChild(el("h4", null, "最近の回"));
-  var kinds = ["今日の分", "もっとやる", "ミスだけ", "もう一周", "苦手語"];
-  sessions.slice(-8).reverse().forEach(function (s) {
-    var ok = s.items.filter(function (it) { return it[1]; }).length;
-    rc.appendChild(el("div", "r", hm(s.ended || s.started) + "　" + (s.b === "k" ? "古文" : "英") + "・" + (kinds[s.day] || "") +
-      "・" + s.round + "周目　" + s.items.length + " 回答（○ " + ok + "）"));
-  });
-  if (!sessions.length) rc.appendChild(el("div", "r", "まだ無い"));
-  body.appendChild(rc);
+  // 直近 7 日の回（範囲の語より上に置く：まず「やったか・結果」を見る）
+  body.insertBefore(history(c, sessions, W, today), body.firstChild);
   det.appendChild(body);
   return det;
 }
