@@ -314,15 +314,16 @@ function todayPlan(bk) {
   bk.words.forEach(function (w) { inRange[w[5]] = 1; });
   // 期間データを作り直して範囲が変わったら、前の範囲で決めた今日の分は作り直す（2026-09-17 藤岡）
   if (pl && pl.rows.some(function (r) { return !inRange[r]; })) pl = null;
-  // 毎日足す単語帳は pre（渡す前にやった語）込みで決め直す（2026-09-19 渡辺、pre を足す前の版で決めた分を捨てる）
-  if (pl && bk.daily && pl.pre !== (bk.pre || 0)) pl = null;
+  // 毎日足す単語帳は、足し方（語数・休みの曜日）が変わったら決め直す（2026-09-19 渡辺）
+  var sig = bk.daily ? bk.daily + "/" + (bk.rest || []).join(",") : undefined;
+  if (pl && pl.sig !== sig) pl = null;
   if (!pl) {
     var all = fsrsAll(), ph = phaseToday(), unseen = bk.words.filter(function (w) { return !all[w[5]]; }).map(function (w) { return w[5]; });
     // 毎日 daily 語ずつの単語帳は番号順に今日の分を決める（出す順番はランダム）
-    pl = { rows: ph.kind === "final" ? [] : bk.daily && P.handout
-      ? shuffle(wcDailyRows({ rows: bk.words.map(function (w) { return w[5]; }), t: testRows(bk), daily: bk.daily, pre: bk.pre }, all, P.handout, todayIso()))
-      : shuffle(unseen).slice(0, wcFreshCount(unseen.length, ph)) };
-    if (bk.daily) pl.pre = bk.pre || 0;
+    pl = { rows: bk.daily && P.handout
+      ? shuffle(wcDailyRows({ rows: bk.words.map(function (w) { return w[5]; }), t: testRows(bk), daily: bk.daily, rest: bk.rest }, all, P.handout, todayIso()))
+      : ph.kind === "final" ? [] : shuffle(unseen).slice(0, wcFreshCount(unseen.length, ph)) };
+    if (sig) pl.sig = sig;
     store(key, pl);
   }
   return pl;
@@ -330,7 +331,7 @@ function todayPlan(bk) {
 function newToday(bk) { var all = fsrsAll(); return todayPlan(bk).rows.filter(function (r) { return !all[r] && INDEX[r]; }).map(function (r) { return INDEX[r]; }); }
 function todayDeck(bk) { return withPend(bk, baseDeck(bk)); }
 function baseDeck(bk) {
-  if (phaseToday().kind !== "final") return dueCards(bk.b).concat(newToday(bk));
+  if (phaseToday().kind !== "final" || bk.daily) return dueCards(bk.b).concat(newToday(bk));   // 毎日足す単語帳は前日も足す
   var fin = wcFinalRows({ rows: bk.words.map(function (w) { return w[5]; }), t: testRows(bk) }, fsrsAll(), todayIso()), inFin = {};
   fin.forEach(function (r) { inFin[r] = 1; });
   return shuffle(fin.filter(function (r) { return INDEX[r]; }).map(function (r) { return INDEX[r]; }))
@@ -354,9 +355,13 @@ function hub() {
   screen("hub"); $("title").textContent = "単語チェック"; $("count").textContent = "";
   $("hubBig").textContent = "テスト " + md(P.test);
   var ph = phaseToday(), fa = fsrsAll(), behind = 0;
-  var daily = P.books.filter(function (bk) { return bk.daily; })[0];
+  var daily = P.books.filter(function (bk) { return bk.daily; });
   P.books.forEach(function (bk) { if (!bk.daily) bk.words.forEach(function (w) { if (!fa[w[5]]) behind++; }); });
-  $("hubSmall").textContent = ph.kind !== "final" && daily ? (daily.b === "k" ? "古文" : "英単語") + "は毎日 " + daily.daily + " 語ずつ増える。毎日「今日の分」を終わらせよう"
+  var allDaily = daily.length && daily.length === P.books.length, rest = daily.some(function (bk) { return wcRest(bk, todayIso()); });
+  $("hubSmall").textContent = (ph.kind !== "final" || allDaily) && daily.length
+    ? (rest ? "今日は日曜。新しい語は無し、復習だけ。"
+            : daily.map(function (bk) { return (bk.b === "k" ? "古文" : "英単語") + " " + bk.daily + " 語"; }).join("・") + "ずつ毎日増える（日曜は復習だけ）。")
+      + "毎日「今日の分」を終わらせよう"
     : ph.kind === "final" ? (days(todayIso(), P.test) === 1 ? "明日はテスト。今日はテスト範囲を全部 1 周しよう" : "テスト範囲を全部 1 周しよう")
     : ph.kind === "review" ? (behind ? "まだやっていない語が " + behind + " 語。今日中に追いつこう" : "新しい語は出し切った。今日は復習の日")
     : "新しい語は あと " + ph.left + " 日で出し切る。毎日「今日の分」を終わらせよう";
@@ -708,7 +713,7 @@ function saveState() {
   P.books.forEach(function (bk) { var pl = store(planKey(bk)); if (pl) plans[bk.b] = { date: todayIso(), rows: pl.rows }; });
   var pend = Object.keys(pendAll());
   var snap = { pend: pend, handout: P.handout, test: P.test, bookOf: BOOK, fsrs: fsrsAll(), plans: plans, url: location.href,
-               books: P.books.map(function (bk) { return { b: bk.b, label: bk.label, rows: bk.words.map(function (w) { return w[5]; }), t: testRows(bk), daily: bk.daily, pre: bk.pre }; }) };
+               books: P.books.map(function (bk) { return { b: bk.b, label: bk.label, rows: bk.words.map(function (w) { return w[5]; }), t: testRows(bk), daily: bk.daily, rest: bk.rest }; }) };
   caches.open("wc-state").then(function (c) {
     return c.put("state.json", new Response(JSON.stringify(snap), { headers: { "Content-Type": "application/json" } }));
   }).catch(function () {});

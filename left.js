@@ -39,13 +39,23 @@ function wcFinalRows(bk, fsrs, today) {
 }
 
 // 毎日 daily 語ずつ番号順に足す単語帳（2026-09-19 本人決定、渡辺）。
-//   渡した日を 1 日目として、今日までに pre＋daily×日数 語（テスト範囲の中で）。休んだ日の分は翌日に回る。
-//   前週の範囲でまだやっていない語は先に全部出す。返すのは今日出す新しい語の行番号（番号順）
+//   渡した日から今日までの足す日（rest の曜日＝日曜を除く）の数×daily 語（テスト範囲の中で）。休んだ日の分は次の足す日に回る。
+//   rest の曜日は新しい語を出さない（復習だけ）。前週の範囲でまだやっていない語は先に全部出す。返すのは今日出す新しい語の行番号（番号順）
+function wcRest(bk, day) { return (bk.rest || []).indexOf(new Date(day + "T00:00:00").getDay()) >= 0; }
+// 渡した日〜day（含む）のうち新しい語を足す日の数
+function wcNewDays(bk, handout, day) {
+  var n = 0;
+  for (var i = 0; i <= wcDays(handout, day); i++) {
+    var d = new Date(handout + "T00:00:00"); d.setDate(d.getDate() + i);
+    if (!wcRest(bk, wcIso(d))) n++;
+  }
+  return n;
+}
 function wcDailyRows(bk, fsrs, handout, today) {
+  if (wcRest(bk, today)) return [];
   var t = bk.t || bk.rows, inT = {}, seenT = 0;
   t.forEach(function (r) { inT[r] = 1; if (fsrs[r]) seenT++; });
-  var k = Math.max(1, wcDays(handout, today) + 1);
-  var room = Math.max(0, Math.min(t.length, (bk.pre || 0) + bk.daily * k) - seenT);   // pre＝渡す前にもうやった語
+  var room = Math.max(0, Math.min(t.length, bk.daily * wcNewDays(bk, handout, today)) - seenT);
   var old = bk.rows.filter(function (r) { return !inT[r] && !fsrs[r]; });
   return old.concat(t.filter(function (r) { return !fsrs[r]; }).slice(0, room));
 }
@@ -55,7 +65,7 @@ function wcLeft(snap, today) {
   var fsrs = snap.fsrs || {}, out = [], phase = wcPhase(snap.handout, snap.test, today);
   (snap.books || []).forEach(function (bk) {
     var n;
-    if (phase.kind === "final") {
+    if (phase.kind === "final" && !bk.daily) {   // 毎日足す単語帳は前日も足す（総復習にしない）
       var fin = wcFinalRows(bk, fsrs, today), inFin = {};
       fin.forEach(function (r) { inFin[r] = 1; });
       var due = 0;

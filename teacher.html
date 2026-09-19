@@ -241,8 +241,8 @@ function bookBlock(bk, p, W, st, last, first, firsts, recs, today) {
   var seenY = rows.filter(function (r) { return first[r] && first[r] < today; }).length;
   var k = Math.max(1, days(p.handout, today));
   var goalY = today <= p.handout ? 0 : Math.min(n, Math.ceil(n * Math.min(1, (k - 1) / intro)));
-  // 毎日 daily 語ずつ足す単語帳：昨日までに daily×日数（渡した日が 1 日目）＋前週の語全部（2026-09-19 渡辺）
-  if (bk.daily) goalY = today <= p.handout ? 0 : Math.min(n, n - tn + (bk.pre || 0) + bk.daily * days(p.handout, today));
+  // 毎日 daily 語ずつ足す単語帳：昨日までの足す日（日曜など rest を除く）×daily＋前週の語全部（2026-09-19 渡辺）
+  if (bk.daily) goalY = today <= p.handout ? 0 : Math.min(n, n - tn + bk.daily * wcNewDays(bk, p.handout, addDays(today, -1)));
   var behind = Math.max(0, goalY - seenY);
   var pred = testRows.reduce(function (a, r) { return a + (st[r] ? retr(Math.max(0, days(last[r], p.test)), st[r][0]) : 0); }, 0) / Math.max(1, testRows.length);
   var kv = el("div", "kv");
@@ -253,7 +253,7 @@ function bookBlock(bk, p, W, st, last, first, firsts, recs, today) {
   }
   box(seen + " / " + n, "範囲でやった語", n ? seen / n * 100 : 0);
   box(pct(pred), "テスト日の予測（想起率の平均）");
-  box(behind ? "遅れ " + behind : "順調", bk.daily && ph.kind !== "final" ? "毎日 " + bk.daily + " 語ずつ" : { intro: "新しい語の期間（" + intro + " 日で出し切る）", review: "復習の期間", final: "テスト前日の総復習" }[ph.kind]);
+  box(behind ? "遅れ " + behind : "順調", bk.daily ? "毎日 " + bk.daily + " 語ずつ" + ((bk.rest || []).length ? "（日曜は復習だけ）" : "") : { intro: "新しい語の期間（" + intro + " 日で出し切る）", review: "復習の期間", final: "テスト前日の総復習" }[ph.kind]);
   var wrong = firsts.filter(function (r) { return r.d === today && inR[r.row]; });
   box(wrong.length ? pct(wrong.filter(function (r) { return r.ok; }).length / wrong.length) : "—", "今日の ○率（1 回目）");
   node.appendChild(kv);
@@ -272,7 +272,7 @@ function bookBlock(bk, p, W, st, last, first, firsts, recs, today) {
   tb.appendChild(hr);
   for (var d = p.handout; d < p.test; d = addDays(d, 1)) {
     var a = ans[d] || 0, cls = d === today ? "today" : d > today ? "future" : (d > p.handout && !a ? "miss" : "");
-    var tr = el("tr", cls), tag = { intro: "新", review: "復", final: "総" }[wcPhase(p.handout, p.test, d).kind];
+    var tr = el("tr", cls), tag = bk.daily ? (wcRest(bk, d) ? "復" : "新") : { intro: "新", review: "復", final: "総" }[wcPhase(p.handout, p.test, d).kind];
     [md(d).replace("（", "(").replace("）", ")"), tag, a || "", fst[d] || "", nw[d] || "", fst[d] ? pct(oks[d] / fst[d]) : "—"].forEach(function (v, i) {
       tr.appendChild(el("td", i === 1 ? "tag" : null, String(v)));
     });
@@ -298,7 +298,7 @@ function bookBlock(bk, p, W, st, last, first, firsts, recs, today) {
   });
   if (!weak.length) wk.appendChild(el("div", "note", "まだ無い"));
   node.appendChild(wk);
-  var chip = ph.kind === "final" ? "総復習 " + pct(pred) : seen + "/" + n + (behind ? " 遅れ" + behind : "");
+  var chip = ph.kind === "final" && !bk.daily ? "総復習 " + pct(pred) : seen + "/" + n + (behind ? " 遅れ" + behind : "");
   return { node: node, chip: chip, cls: behind ? "warn" : seen === n ? "ok" : "" };
 }
 
