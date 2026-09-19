@@ -4,7 +4,7 @@
 //   - 前半（宿題の日数の半分、最後の日は含めない）：まだやっていない語を 残り÷前半の残り日数 ずつ
 //   - 後半：FSRS の期限の語だけ（出遅れてまだやっていない語があれば全部出す）
 //   - テストの前日（と当日）：テスト範囲を全部 1 周（今日もうやった語は除く）＋期限の語
-// snapshot = { handout, test, books: [{b, label, rows, t}], bookOf: {行番号: b},
+// snapshot = { handout, test, books: [{b, label, rows, t, daily}], bookOf: {行番号: b},
 //              fsrs: {行番号: [安定度, 難易度, 最後の日]}, plans: {b: {date, rows}}, pend: [今日最後が ✕ の行番号], url }
 //   t はテスト範囲（次週）の行番号。古いデータで無ければ rows 全部を使う
 var WC_REVIEW_MAX = 100, WC_FINAL_REVIEW_MAX = 50, WC_INTRO_RATIO = 0.5;   // 前日は範囲の 1 周が主なので期限の語を絞る
@@ -38,6 +38,18 @@ function wcFinalRows(bk, fsrs, today) {
   return out;
 }
 
+// 毎日 daily 語ずつ番号順に足す単語帳（2026-09-19 本人決定、渡辺）。
+//   渡した日を 1 日目として、今日までに daily×日数 語（テスト範囲の中で）。休んだ日の分は翌日に回る。
+//   前週の範囲でまだやっていない語は先に全部出す。返すのは今日出す新しい語の行番号（番号順）
+function wcDailyRows(bk, fsrs, handout, today) {
+  var t = bk.t || bk.rows, inT = {}, seenT = 0;
+  t.forEach(function (r) { inT[r] = 1; if (fsrs[r]) seenT++; });
+  var k = Math.max(1, wcDays(handout, today) + 1);
+  var room = Math.max(0, Math.min(t.length, bk.daily * k) - seenT);
+  var old = bk.rows.filter(function (r) { return !inT[r] && !fsrs[r]; });
+  return old.concat(t.filter(function (r) { return !fsrs[r]; }).slice(0, room));
+}
+
 function wcLeft(snap, today) {
   today = today || wcIso(new Date());
   var fsrs = snap.fsrs || {}, out = [], phase = wcPhase(snap.handout, snap.test, today);
@@ -54,6 +66,7 @@ function wcLeft(snap, today) {
       Object.keys(fsrs).forEach(function (row) { if (snap.bookOf[row] === bk.b && wcDue(fsrs[row], today)) d++; });
       var plan = (snap.plans || {})[bk.b], fresh;
       if (plan && plan.date === today) fresh = plan.rows.filter(function (r) { return !fsrs[r]; }).length;
+      else if (bk.daily && snap.handout) fresh = wcDailyRows(bk, fsrs, snap.handout, today).length;
       else fresh = wcFreshCount(bk.rows.filter(function (r) { return !fsrs[r]; }).length, phase);
       n = Math.min(d, WC_REVIEW_MAX) + fresh;
     }
