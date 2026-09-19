@@ -112,6 +112,7 @@ table.days tr.today td:first-child{font-weight:700}
  display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px 20px;touch-action:none;user-select:none;-webkit-user-select:none;will-change:transform;overflow:hidden}
 .card .glow{position:absolute;inset:0;opacity:0;pointer-events:none}
 .card .waitN{font-size:40px;font-weight:700;margin:6px 0}
+.card .waitGo{border:0;border-radius:10px;padding:12px 36px;margin:4px 0 12px;font-size:17px;font-weight:700;background:var(--acc);color:#fff}
 .card .waitSub{font-size:13px;opacity:.7;text-align:center;line-height:1.6}
 .card .gng{background:rgba(217,61,74,.14)}
 .card .gok{background:rgba(26,157,92,.14)}
@@ -495,8 +496,7 @@ function begin(bk, kind, deck, round) {
   if (!deck.length) return;
   S = { book: bk, kind: kind, round: round, deck: deck, idx: deck.map(function (w, k) { return k; }), i: 0, res: [], times: [], fs: [], undo: 0,
         started: Date.now(), id: rid(), sent: false, sentN: 0, part: 0, pp: [], shownAt: 0, flipAt: 0, flipped: false,
-        ready: {}, pr: [], timer: null };                    // ready：デッキの番号 → 出してよい時刻（✕の語だけ）
-  if (PERIOD) { var pa = pendAll(); deck.forEach(function (w, k) { if (pa[w[5]] > 1) S.ready[k] = pa[w[5]] + RELEARN_MS; }); }
+        ready: {}, pr: [], timer: null };                    // ready：デッキの番号 → 出してよい時刻（✕の語だけ。一覧から始め直したら待たない）
   var names = { today: "今日の分", more: "もっとやる", miss: "ミスだけ", again: "もう一周", weak: "苦手語" };
   $("title").textContent = (bk.label || "") + "　" + names[kind] + (round > 1 ? "　" + round + "周目" : "");
   screen("swipe"); render();
@@ -558,14 +558,17 @@ function pickReady() {
   }
   return false;
 }
-// 残りが出し直し待ちの✕の語だけのとき：時間まで待つ（一覧にもどっても今日の分に残る）
+// 残りが出し直し待ちの✕の語だけのとき：時間まで待つか「もう一度」ですぐ出す
+// 本人決定（2026-09-19）：1 分待たせるとやめてしまうので、ボタンですぐ解けるように。一覧から始め直しても待たない
 function waitCard(stage) {
   var now = Date.now(), rest = S.idx.slice(S.i), at = Math.min.apply(null, rest.map(function (v) { return S.ready[v] || now; }));
   var card = el("div", "card");
   card.appendChild(el("div", "waitSub", "ミスした語 " + rest.length + " 語を もう一度"));
   card.appendChild(el("div", "waitN", "あと " + Math.max(1, Math.ceil((at - now) / 1000)) + " 秒"));
-  card.appendChild(el("div", "waitSub", "すぐに出すと覚えていなくても ○ にできるので、少しあけて出す。\n一覧にもどっても、○ にするまで今日の分に残る"));
-  card.lastChild.style.whiteSpace = "pre-line";
+  var go = el("button", "waitGo", "もう一度");
+  go.onclick = function () { S.idx.slice(S.i).forEach(function (v) { delete S.ready[v]; }); render(); };
+  card.appendChild(go);
+  card.appendChild(el("div", "waitSub", "待つと自動で出る。一覧にもどっても、○ にするまで今日の分に残る"));
   stage.appendChild(card);
   S.flipped = false; setButtons();
   var s0 = S;
