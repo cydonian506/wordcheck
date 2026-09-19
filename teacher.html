@@ -294,7 +294,7 @@ function overview(ses, today) {
   return box;
 }
 // 生徒の直近 7 日：日ごとに回を並べ、押すと ✕ だった語
-function history(c, sessions, W, today) {
+function histBlock(c, sessions, W, today) {
   var box = el("div", "hist"), rs = runs(sessions), byDay = {};
   box.appendChild(el("h4", null, "直近 7 日の回（押すと ✕ の語）"));
   rs.forEach(function (r) { (byDay[r.d] = byDay[r.d] || []).push(r); });
@@ -376,7 +376,7 @@ function studentBlock(c, sessions, today, open) {
   sum.appendChild(chips);
   det.appendChild(sum);
   // 直近 7 日の回（範囲の語より上に置く：まず「やったか・結果」を見る）
-  body.insertBefore(history(c, sessions, W, today), body.firstChild);
+  body.insertBefore(histBlock(c, sessions, W, today), body.firstChild);
   det.appendChild(body);
   return det;
 }
