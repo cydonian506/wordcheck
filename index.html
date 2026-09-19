@@ -312,7 +312,7 @@ function todayPlan(bk) {
     var all = fsrsAll(), ph = phaseToday(), unseen = bk.words.filter(function (w) { return !all[w[5]]; }).map(function (w) { return w[5]; });
     // 毎日 daily 語ずつの単語帳は番号順に今日の分を決める（出す順番はランダム）
     pl = { rows: ph.kind === "final" ? [] : bk.daily && P.handout
-      ? shuffle(wcDailyRows({ rows: bk.words.map(function (w) { return w[5]; }), t: testRows(bk), daily: bk.daily }, all, P.handout, todayIso()))
+      ? shuffle(wcDailyRows({ rows: bk.words.map(function (w) { return w[5]; }), t: testRows(bk), daily: bk.daily, pre: bk.pre }, all, P.handout, todayIso()))
       : shuffle(unseen).slice(0, wcFreshCount(unseen.length, ph)) };
     store(key, pl);
   }
@@ -664,7 +664,7 @@ function saveState() {
   P.books.forEach(function (bk) { var pl = store(planKey(bk)); if (pl) plans[bk.b] = { date: todayIso(), rows: pl.rows }; });
   var pend = Object.keys(pendAll());
   var snap = { pend: pend, handout: P.handout, test: P.test, bookOf: BOOK, fsrs: fsrsAll(), plans: plans, url: location.href,
-               books: P.books.map(function (bk) { return { b: bk.b, label: bk.label, rows: bk.words.map(function (w) { return w[5]; }), t: testRows(bk), daily: bk.daily }; }) };
+               books: P.books.map(function (bk) { return { b: bk.b, label: bk.label, rows: bk.words.map(function (w) { return w[5]; }), t: testRows(bk), daily: bk.daily, pre: bk.pre }; }) };
   caches.open("wc-state").then(function (c) {
     return c.put("state.json", new Response(JSON.stringify(snap), { headers: { "Content-Type": "application/json" } }));
   }).catch(function () {});

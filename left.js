@@ -39,13 +39,13 @@ function wcFinalRows(bk, fsrs, today) {
 }
 
 // 毎日 daily 語ずつ番号順に足す単語帳（2026-09-19 本人決定、渡辺）。
-//   渡した日を 1 日目として、今日までに daily×日数 語（テスト範囲の中で）。休んだ日の分は翌日に回る。
+//   渡した日を 1 日目として、今日までに pre＋daily×日数 語（テスト範囲の中で）。休んだ日の分は翌日に回る。
 //   前週の範囲でまだやっていない語は先に全部出す。返すのは今日出す新しい語の行番号（番号順）
 function wcDailyRows(bk, fsrs, handout, today) {
   var t = bk.t || bk.rows, inT = {}, seenT = 0;
   t.forEach(function (r) { inT[r] = 1; if (fsrs[r]) seenT++; });
   var k = Math.max(1, wcDays(handout, today) + 1);
-  var room = Math.max(0, Math.min(t.length, bk.daily * k) - seenT);
+  var room = Math.max(0, Math.min(t.length, (bk.pre || 0) + bk.daily * k) - seenT);   // pre＝渡す前にもうやった語
   var old = bk.rows.filter(function (r) { return !inT[r] && !fsrs[r]; });
   return old.concat(t.filter(function (r) { return !fsrs[r]; }).slice(0, room));
 }

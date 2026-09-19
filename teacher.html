@@ -242,7 +242,7 @@ function bookBlock(bk, p, W, st, last, first, firsts, recs, today) {
   var k = Math.max(1, days(p.handout, today));
   var goalY = today <= p.handout ? 0 : Math.min(n, Math.ceil(n * Math.min(1, (k - 1) / intro)));
   // 毎日 daily 語ずつ足す単語帳：昨日までに daily×日数（渡した日が 1 日目）＋前週の語全部（2026-09-19 渡辺）
-  if (bk.daily) goalY = today <= p.handout ? 0 : Math.min(n, n - tn + bk.daily * days(p.handout, today));
+  if (bk.daily) goalY = today <= p.handout ? 0 : Math.min(n, n - tn + (bk.pre || 0) + bk.daily * days(p.handout, today));
   var behind = Math.max(0, goalY - seenY);
   var pred = testRows.reduce(function (a, r) { return a + (st[r] ? retr(Math.max(0, days(last[r], p.test)), st[r][0]) : 0); }, 0) / Math.max(1, testRows.length);
   var kv = el("div", "kv");
