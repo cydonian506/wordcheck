@@ -122,6 +122,18 @@ tr.miss td{color:var(--ng)}
 var NOTIFY = "https://wordcheck-notify.wc30df6df0.workers.dev";
 var VAPID = "BP7_JwgCCmh-V3y54PnC3u9K5KV1RZZWYuIvhTfC1a_X6v7ry_OkzieJ2P4fn8-CM5tS7HLt5s-6V_jt5XYkW-Q";
 var WD = "日月火水木金土", DAYS_BACK = 60, WEAK_SHOW = 10;
+// ホーム画面・通知・履歴から開くと ?s= や # の後ろが欠けることがある（2026-09-19 本人「アドレスが足りない」）
+// → 揃ったアドレスで開いたら端末に覚え、欠けていたら覚えたほうで開き直す
+(function () {
+  var ok = /[?&]s=[0-9a-z]{17}/i.test(location.search) && /[#&]k=/.test(location.hash) && /[#&]t=/.test(location.hash);
+  try {
+    if (ok) localStorage.setItem("teacher:addr", JSON.stringify({ q: location.search, h: location.hash }));
+    else {
+      var a = JSON.parse(localStorage.getItem("teacher:addr") || "null");
+      if (a && a.q && a.h) history.replaceState(null, "", location.pathname + a.q + a.h);
+    }
+  } catch (e) {}
+})();
 var Q = new URLSearchParams(location.search), H = new URLSearchParams(location.hash.slice(1));
 var TID = (Q.get("s") || "").toLowerCase(), KEY = H.get("k") || "", TOKEN = H.get("t") || "";
 // 氏名：n=コード:氏名,コード:氏名（並びはこの順）
