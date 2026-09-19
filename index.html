@@ -308,12 +308,15 @@ function todayPlan(bk) {
   bk.words.forEach(function (w) { inRange[w[5]] = 1; });
   // 期間データを作り直して範囲が変わったら、前の範囲で決めた今日の分は作り直す（2026-09-17 藤岡）
   if (pl && pl.rows.some(function (r) { return !inRange[r]; })) pl = null;
+  // 毎日足す単語帳は pre（渡す前にやった語）込みで決め直す（2026-09-19 渡辺、pre を足す前の版で決めた分を捨てる）
+  if (pl && bk.daily && pl.pre !== (bk.pre || 0)) pl = null;
   if (!pl) {
     var all = fsrsAll(), ph = phaseToday(), unseen = bk.words.filter(function (w) { return !all[w[5]]; }).map(function (w) { return w[5]; });
     // 毎日 daily 語ずつの単語帳は番号順に今日の分を決める（出す順番はランダム）
     pl = { rows: ph.kind === "final" ? [] : bk.daily && P.handout
       ? shuffle(wcDailyRows({ rows: bk.words.map(function (w) { return w[5]; }), t: testRows(bk), daily: bk.daily, pre: bk.pre }, all, P.handout, todayIso()))
       : shuffle(unseen).slice(0, wcFreshCount(unseen.length, ph)) };
+    if (bk.daily) pl.pre = bk.pre || 0;
     store(key, pl);
   }
   return pl;
