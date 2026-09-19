@@ -122,7 +122,7 @@ table.days tr.today td:first-child{font-weight:700}
 .card .say:active{background:var(--bg)}
 .card .back{position:relative;display:flex;flex-direction:column;align-items:center;min-height:86px}
 .card .tapHint{margin-top:22px;font-size:14px;color:var(--sub)}
-.card .pos{margin-top:14px;font-size:12px;color:var(--sub);border:1px solid var(--line);border-radius:6px;padding:2px 8px}
+.card .pos{position:relative;margin-top:10px;font-size:12px;color:var(--sub);border:1px solid var(--line);border-radius:6px;padding:2px 8px}
 .card .mean{margin-top:10px;font-size:18px;text-align:center;line-height:1.55}
 .hint{display:flex;justify-content:space-between;width:100%;max-width:380px;margin-top:10px;font-size:13px;color:var(--sub)}
 .btns{display:flex;align-items:center;justify-content:center;gap:24px;margin-top:12px}
@@ -513,6 +513,7 @@ function render() {
   if (PERIOD && !fsrsAll()[w[5]]) card.appendChild(el("div", "tag", "はじめて"));
   card.appendChild(el("div", "no", "No." + (w[4] || w[0])));
   card.appendChild(el("div", "word", w[1]));
+  if (w[3]) card.appendChild(el("div", "pos", w[3]));   // 本人希望（2026-09-19）：品詞は表に出す（英単語だけ、推定）
   if (S.book.b === "e" && canSpeak()) card.appendChild(sayButton(w[1]));
   var back = el("div", "back"); card.appendChild(back);
   S.flipped = false; S.shownAt = Date.now(); S.flipAt = 0;
@@ -561,7 +562,6 @@ function sayButton(text) {
 function flip(card, back) {
   if (S.flipped) return;
   var w = word(); back.innerHTML = "";
-  if (w[3]) back.appendChild(el("div", "pos", w[3]));
   if (w[2]) back.appendChild(el("div", "mean", w[2].split("／").join("、")));
   S.flipped = true; S.flipAt = Date.now(); setButtons();
 }
