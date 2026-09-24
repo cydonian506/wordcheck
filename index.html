@@ -127,6 +127,14 @@ table.days tr.today td:first-child{font-weight:700}
 .card .tapHint{margin-top:22px;font-size:14px;color:var(--sub)}
 .card .pos{position:relative;margin-top:10px;font-size:12px;color:var(--sub);border:1px solid var(--line);border-radius:6px;padding:2px 8px}
 .card .mean{margin-top:10px;font-size:18px;text-align:center;line-height:1.55}
+/* 例文（✕が EX_MIN 回以上たまった語だけ。覚える部分をハイライト） */
+.card .ex{position:relative;margin-top:12px;max-width:340px;font-size:15px;line-height:1.5;text-align:center}
+.card .exja{margin-top:8px;max-width:340px;font-size:14px;line-height:1.5;text-align:center;color:var(--sub)}
+.card mark.hl{background:#ffe9a8;color:inherit;font-weight:700;border-radius:3px;padding:0 2px}
+.card.withEx{justify-content:flex-start;padding:34px 16px 18px}
+.card.withEx .word{font-size:clamp(24px,7.5vw,32px)}
+.card.withEx .say{margin-top:8px;width:38px;height:38px;font-size:16px}
+.card.withEx .back{min-height:0}
 .hint{display:flex;justify-content:space-between;width:100%;max-width:380px;margin-top:10px;font-size:13px;color:var(--sub)}
 .btns{display:flex;align-items:center;justify-content:center;gap:24px;margin-top:12px}
 .round{border:1px solid var(--line);border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--card)}
@@ -217,9 +225,12 @@ var WD = "日月火水木金土", REVIEW_MAX = 100, MORE = 20, WEAK_MAX = 30;
 // 本人決定（2026-09-19）：✕の語は Anki の再学習のように、ほかの語を RELEARN_GAP 語はさんで、かつ RELEARN_MS たってから出し直す
 // （すぐ後ろに出ると覚えていなくても ○ にできてしまうため）。○ にするまで今日の分から外れない
 var RELEARN_GAP = 5, RELEARN_MS = 60000;
+// 本人希望（2026-09-24）：✕が EX_MIN 回たまった語は、Anki のように例文を出す。
+// 表＝例文（覚える部分をハイライト）、裏＝訳（該当部分をハイライト）。例文が無い語は今までどおり
+var EX_MIN = 3;
 // 送る記録の day 欄に入れる周の種類（Apps Script を出し直さずに済むよう mode は fsrs のまま）
 var KIND = { today: 0, more: 1, miss: 2, again: 3, weak: 4 };
-var P = null, S = null, busy = false, INDEX = {}, BOOK = {};   // INDEX：行番号 → [0, 単語, 訳, 品詞, 単語帳の番号, 行番号]、BOOK：行番号 → "e"/"k"
+var P = null, S = null, busy = false, INDEX = {}, BOOK = {};   // INDEX：行番号 → [0, 単語, 訳, 品詞, 単語帳の番号, 行番号, 例文, 例文の訳, 例文の該当部分, 訳の該当部分]、BOOK：行番号 → "e"/"k"
 var $ = function (id) { return document.getElementById(id); };
 function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
 function screen(id) {
@@ -406,6 +417,42 @@ function mergedHist() {
   });
   return out;
 }
+// 語ごとの ✕ の回数（その日の最初の 1 回だけ数える。配ったデータと端末の記録を合わせたもの）
+function ngMap() {
+  var H = mergedHist(), out = {};
+  Object.keys(H).forEach(function (r) {
+    var n = 0;
+    H[r].forEach(function (x) { if (!x[1]) n++; });
+    if (n) out[r] = n;
+  });
+  return out;
+}
+// 例文を出す語か（✕ EX_MIN 回以上＋例文のデータがある）。回数は回のはじめに数えておく（S.ng）
+function showEx(w) { return !!(w && w[6]) && S && (S.ng[w[5]] || 0) >= EX_MIN; }
+// 覚える部分だけハイライトして入れる。見つからないときは穴（( )）、それも無ければそのまま
+// 例文を出すと入りきらないことがあるので、はみ出すぶんだけ字を小さくする（最小 11px）
+function fitCard(card) {
+  var els = [].slice.call(card.querySelectorAll(".ex, .exja, .mean"));
+  if (!els.length) return;
+  for (var k = 0; k < 6 && card.scrollHeight > card.clientHeight + 1; k++) {
+    var done = true;
+    els.forEach(function (e) {
+      var cur = parseFloat(getComputedStyle(e).fontSize);
+      if (cur > 11) { e.style.fontSize = Math.max(11, cur - 1) + "px"; done = false; }
+    });
+    if (done) break;
+  }
+}
+function hlInto(box, text, target) {
+  if (!text) return box;
+  var i = target ? text.indexOf(target) : -1;
+  if (i < 0) { target = "( )"; i = text.indexOf(target); }
+  if (i < 0) { box.textContent = text; return box; }
+  box.appendChild(document.createTextNode(text.slice(0, i)));
+  box.appendChild(el("mark", "hl", target));
+  box.appendChild(document.createTextNode(text.slice(i + target.length)));
+  return box;
+}
 function dayCount(day, b) {
   var c = (store("cnt:" + ME) || {})[day] || {}, d = ((P && P.dayn) || {})[day] || {};
   return Math.max(c[b] || 0, d[b] || 0);
@@ -495,6 +542,7 @@ function stats() {
 function begin(bk, kind, deck, round) {
   if (!deck.length) return;
   S = { book: bk, kind: kind, round: round, deck: deck, idx: deck.map(function (w, k) { return k; }), i: 0, res: [], times: [], fs: [], undo: 0,
+        ng: ngMap(),                                       // 例文を出すかの判定に使う（回の途中では増やさない）
         started: Date.now(), id: rid(), sent: false, sentN: 0, part: 0, pp: [], shownAt: 0, flipAt: 0, flipped: false,
         ready: {}, pr: [], timer: null };                    // ready：デッキの番号 → 出してよい時刻（✕の語だけ。一覧から始め直したら待たない）
   var names = { today: "今日の分", more: "もっとやる", miss: "ミスだけ", again: "もう一周", weak: "苦手語" };
@@ -522,7 +570,7 @@ function render() {
   clearTimeout(S.timer);
   if (S.i >= S.idx.length) { finish(); return; }
   if (PERIOD && !pickReady()) { waitCard(stage); return; }
-  var w = word(), card = el("div", "card");
+  var w = word(), card = el("div", "card" + (showEx(w) ? " withEx" : ""));
   card.appendChild(el("div", "glow gng")); card.appendChild(el("div", "glow gok"));
   card.appendChild(el("div", "mark mng", "✕")); card.appendChild(el("div", "mark mok", "○"));
   if (PERIOD && !fsrsAll()[w[5]]) card.appendChild(el("div", "tag", "はじめて"));
@@ -530,10 +578,11 @@ function render() {
   card.appendChild(el("div", "word", w[1]));
   if (w[3]) card.appendChild(el("div", "pos", w[3]));   // 本人希望（2026-09-19）：品詞は表に出す（英単語だけ、推定）
   if (S.book.b === "e" && canSpeak()) card.appendChild(sayButton(w[1]));
+  if (showEx(w)) card.appendChild(hlInto(el("div", "ex"), w[6], w[8]));
   var back = el("div", "back"); card.appendChild(back);
   S.flipped = false; S.shownAt = Date.now(); S.flipAt = 0;
   if (PERIOD) back.appendChild(el("div", "tapHint", "タップで答え")); else flip(card, back);
-  stage.appendChild(card); setButtons();
+  stage.appendChild(card); setButtons(); fitCard(card);
   var sx = null, dx = 0;
   card.onpointerdown = function (e) { sx = e.clientX; dx = 0; try { card.setPointerCapture(e.pointerId); } catch (err) {} card.style.transition = "none"; };
   card.onpointermove = function (e) {
@@ -604,7 +653,8 @@ function flip(card, back) {
   if (S.flipped) return;
   var w = word(); back.innerHTML = "";
   if (w[2]) back.appendChild(el("div", "mean", w[2].split("／").join("、")));
-  S.flipped = true; S.flipAt = Date.now(); setButtons();
+  if (showEx(w)) back.appendChild(hlInto(el("div", "exja"), w[7], w[9]));
+  S.flipped = true; S.flipAt = Date.now(); setButtons(); fitCard(card);
 }
 function tint(card, r) {
   r = Math.max(-1, Math.min(1, r)); var a = Math.abs(r);
@@ -879,7 +929,7 @@ if (!/^[0-9a-z]{23}$/.test(SID)) {
         if (!d.books) { show("古い QR です。先生に新しい QR をもらってね"); return; }
         P = d;
         // 範囲の語と、前の期間の語（復習に出る）の索引
-        Object.keys(P.cards || {}).forEach(function (row) { var c = P.cards[row]; INDEX[row] = [0, c[1], c[2], c[3], c[4], +row]; BOOK[row] = c[0]; });
+        Object.keys(P.cards || {}).forEach(function (row) { var c = P.cards[row]; INDEX[row] = [0, c[1], c[2], c[3], c[4], +row, c[8], c[9], c[10], c[11]]; BOOK[row] = c[0]; });
         P.books.forEach(function (bk) { bk.words.forEach(function (w) { INDEX[w[5]] = w; BOOK[w[5]] = bk.b; }); });
         fsrsSeed(); store("cur:" + ME, { s: SID, k: KEY }); hub(); checkLatest(d.ptr); startPush(); return;
       }
