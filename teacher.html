@@ -89,6 +89,11 @@ tr.miss td{color:var(--ng)}
 .ov .on{font-size:14px;font-weight:700;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ov .ol{font-size:11px;color:var(--sub);display:block;white-space:nowrap}
 .ov .ol.stale{color:var(--ng)}
+.ov .oq{font-size:11px;color:var(--sub);display:block;white-space:nowrap;font-variant-numeric:tabular-nums}
+.ov .oq.ok{color:var(--ok)}
+.ov .oq.ng{color:var(--warn)}
+.sh .today.ok{color:var(--ok)}
+.sh .today.ng{color:var(--warn)}
 .ov td.z{color:#c8c8d0}
 .ov td.t{font-weight:700}
 .ov th.t{color:var(--ink)}
@@ -244,6 +249,45 @@ function runs(sessions) {
   });
   return out.sort(function (a, b) { return (a.ended || 0) - (b.ended || 0); });
 }
+// 今日のノルマ（＝生徒のアプリの「今日の分」の語数）と、今日やった語の数。
+// 生徒の端末の状態は無いので、届いた記録から FSRS を組み直し、今朝の時点の状態で left.js の wcLeft を回す。
+// 生徒の端末は今日やった分を引いて「残り」を出すが、ここは 1 日ぶんの目標を出す（済みは別に数える）。
+function quotaOf(c, sessions, today) {
+  var periods = DATA.students[c] || [], cur = null;
+  periods.forEach(function (p) { if (p.handout <= today && (!cur || p.handout >= cur.handout)) cur = p; });
+  if (!cur) return null;
+  var st = {}, last = {}, doneToday = {}, recs = [];
+  sessions.forEach(function (s) {
+    var d = iso(new Date(s.ended || s.started));
+    s.items.forEach(function (it) { recs.push({ d: d, row: String(it[0]), b: s.b, ok: !!it[1] }); });
+  });
+  recs.forEach(function (r) {
+    if (r.d === today) { doneToday[r.row] = r.b; return; }   // 今朝の時点の状態（今日のぶんは入れない）
+    if (last[r.row] === r.d) return;
+    st[r.row] = fsrsNext(st[r.row], r.ok ? 3 : 1, r.row in last ? days(last[r.row], r.d) : 0);
+    last[r.row] = r.d;
+  });
+  var fsrs = {}, bookOf = {};
+  Object.keys(st).forEach(function (r) { fsrs[r] = [st[r][0], st[r][1], last[r]]; });
+  var books = cur.books.map(function (bk) {
+    var rows = bk.words.map(function (w) { return String(w[0]); }), tn = bk.tn != null ? bk.tn : rows.length;
+    rows.forEach(function (r) { bookOf[r] = bk.b; });
+    return { b: bk.b, label: bk.label, rows: rows, t: rows.slice(rows.length - tn), daily: bk.daily, rest: bk.rest };
+  });
+  var left = wcLeft({ handout: cur.handout, test: cur.test, books: books, bookOf: bookOf, fsrs: fsrs, plans: {}, pend: [] }, today);
+  var done = {};
+  Object.keys(doneToday).forEach(function (r) { var b = bookOf[r] || doneToday[r]; done[b] = (done[b] || 0) + 1; });
+  var out = { books: {}, quota: 0, done: 0 };
+  left.forEach(function (x) {
+    out.books[x.b] = { quota: x.n, done: done[x.b] || 0 };
+    out.quota += x.n; out.done += done[x.b] || 0;
+  });
+  return out;
+}
+function quotaText(q) {
+  if (!q) return "";
+  return q.quota ? q.done + " / " + q.quota + " 語" : q.done ? q.done + " 語（ノルマなし）" : "ノルマなし";
+}
 function whenLabel(ms, today) {
   var d = iso(new Date(ms)), t = hm(ms).split(" ")[1], k = days(d, today);
   return (k === 0 ? "今日 " : k === 1 ? "昨日 " : hm(ms).split(" ")[0] + " ") + t;
@@ -279,6 +323,8 @@ function overview(ses, today) {
     nm.appendChild(el("span", "on", NAMES[c]));
     var lt = lastS ? lastS.ended || lastS.started : 0;
     nm.appendChild(el("span", "ol" + (!lt || days(iso(new Date(lt)), today) >= 2 ? " stale" : ""), lt ? whenLabel(lt, today) : "記録なし"));
+    var q = quotaOf(c, s, today);
+    if (q) nm.appendChild(el("span", "oq" + (q.quota ? q.done >= q.quota ? " ok" : " ng" : ""), "ノルマ " + quotaText(q)));
     nm.onclick = function () {
       var card = document.querySelector('.st[data-c="' + c + '"]');
       if (!card) return;
@@ -360,8 +406,10 @@ function studentBlock(c, sessions, today, open) {
   var sum = el("div", "top"), sh = el("div", "sh");
   sum.onclick = function () { det.classList.toggle("open"); arrow.textContent = det.classList.contains("open") ? "▲" : "▼"; };
   var todayN = recs.filter(function (r) { return r.d === today; }).length;
+  var q = quotaOf(c, sessions, today);
   sh.appendChild(el("span", "nm", NAMES[c]));
-  sh.appendChild(el("span", "today", todayN ? "今日 " + todayN + " 回答" : "今日 まだ"));
+  sh.appendChild(el("span", "today" + (q && q.quota ? q.done >= q.quota ? " ok" : " ng" : ""),
+    q ? "今日 " + quotaText(q) : todayN ? "今日 " + todayN + " 回答" : "今日 まだ"));
   var arrow = el("span", "arrow", open ? "▲" : "▼"); sh.appendChild(arrow);
   sum.appendChild(sh);
   var lastS = sessions[sessions.length - 1];
@@ -369,7 +417,7 @@ function studentBlock(c, sessions, today, open) {
     (cur ? "・テスト " + md(cur.test) + "（あと " + Math.max(0, days(today, cur.test)) + " 日）" : "・期間なし")));
   var chips = el("div", "chips"), body = el("div", "body");
   if (cur) cur.books.forEach(function (bk) {
-    var info = bookBlock(bk, cur, W, st, last, first, firsts, recs, today);
+    var info = bookBlock(bk, cur, W, st, last, first, firsts, recs, today, q && q.books[bk.b]);
     chips.appendChild(el("span", "chip " + info.cls, (bk.b === "k" ? "古文 " : "英 ") + info.chip));
     body.appendChild(info.node);
   });
@@ -380,7 +428,7 @@ function studentBlock(c, sessions, today, open) {
   det.appendChild(body);
   return det;
 }
-function bookBlock(bk, p, W, st, last, first, firsts, recs, today) {
+function bookBlock(bk, p, W, st, last, first, firsts, recs, today, q) {
   var node = el("div", "bk"), rows = bk.words.map(function (x) { return String(x[0]); });
   var tn = bk.tn != null ? bk.tn : rows.length, testRows = rows.slice(rows.length - tn);
   var inR = {}; rows.forEach(function (r) { inR[r] = 1; });
@@ -402,6 +450,7 @@ function bookBlock(bk, p, W, st, last, first, firsts, recs, today) {
     if (barW != null) { var b = el("div", "bar"), f = el("div"); f.style.width = barW + "%"; b.appendChild(f); d.appendChild(b); }
     kv.appendChild(d);
   }
+  if (q) box(q.done + " / " + (q.quota || 0), "今日のノルマ（やった語 / 今日の分）", q.quota ? Math.min(100, q.done / q.quota * 100) : 100);
   box(seen + " / " + n, "範囲でやった語", n ? seen / n * 100 : 0);
   box(pct(pred), "テスト日の予測（想起率の平均）");
   box(behind ? "遅れ " + behind : "順調", bk.daily ? "毎日 " + bk.daily + " 語ずつ" + ((bk.rest || []).length ? "（日曜は復習だけ）" : "") : { intro: "新しい語の期間（" + intro + " 日で出し切る）", review: "復習の期間", final: "テスト前日の総復習" }[ph.kind]);
