@@ -324,7 +324,9 @@ function overview(ses, today) {
     var lt = lastS ? lastS.ended || lastS.started : 0;
     nm.appendChild(el("span", "ol" + (!lt || days(iso(new Date(lt)), today) >= 2 ? " stale" : ""), lt ? whenLabel(lt, today) : "記録なし"));
     var q = quotaOf(c, s, today);
-    if (q) nm.appendChild(el("span", "oq" + (q.quota ? q.done >= q.quota ? " ok" : " ng" : ""), "ノルマ " + quotaText(q)));
+    // 名前の列は狭いので詰める（「ノルマ 38/148」）
+    if (q) nm.appendChild(el("span", "oq" + (q.quota ? q.done >= q.quota ? " ok" : " ng" : ""),
+      q.quota ? "ノルマ " + q.done + "/" + q.quota : "ノルマなし"));
     nm.onclick = function () {
       var card = document.querySelector('.st[data-c="' + c + '"]');
       if (!card) return;
