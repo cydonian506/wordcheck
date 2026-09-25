@@ -38,7 +38,7 @@ main{padding:10px 16px 40px}
 .st.open .body{display:block}
 .sh{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
 .sh .nm{font-size:18px;font-weight:700;min-width:0;word-break:break-all}
-.sh .today{font-size:14px;white-space:nowrap;flex:none;font-variant-numeric:tabular-nums}
+.sh .today{font-size:13px;text-align:right;flex:none;max-width:60%;font-variant-numeric:tabular-nums}
 .sh .arrow{flex:none;color:var(--sub);font-size:13px}
 .sl{margin-top:4px;font-size:13px;color:var(--sub);font-variant-numeric:tabular-nums}
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
@@ -92,6 +92,10 @@ tr.miss td{color:var(--ng)}
 .ov .oq{font-size:11px;color:var(--sub);display:block;white-space:nowrap;font-variant-numeric:tabular-nums}
 .ov .oq.ok{color:var(--ok)}
 .ov .oq.ng{color:var(--warn)}
+.ov .de,.ov .dk{font-size:12px;line-height:1.35}
+.ov .dk{color:var(--sub)}
+.ov .de.z,.ov .dk.z{color:#c8c8d0}
+.ov td.t .de,.ov td.t .dk{font-weight:700}
 .sh .today.ok{color:var(--ok)}
 .sh .today.ng{color:var(--warn)}
 .ov td.z{color:#c8c8d0}
@@ -277,16 +281,25 @@ function quotaOf(c, sessions, today) {
   var left = wcLeft({ handout: cur.handout, test: cur.test, books: books, bookOf: bookOf, fsrs: fsrs, plans: {}, pend: [] }, today);
   var done = {};
   Object.keys(doneToday).forEach(function (r) { var b = bookOf[r] || doneToday[r]; done[b] = (done[b] || 0) + 1; });
-  var out = { books: {}, quota: 0, done: 0 };
+  var out = { books: {}, order: [], quota: 0, done: 0 };
   left.forEach(function (x) {
     out.books[x.b] = { quota: x.n, done: done[x.b] || 0 };
+    out.order.push(x.b);
     out.quota += x.n; out.done += done[x.b] || 0;
   });
   return out;
 }
+function bookName(b) { return b === "k" ? "古文" : "英"; }
 function quotaText(q) {
   if (!q) return "";
   return q.quota ? q.done + " / " + q.quota + " 語" : q.done ? q.done + " 語（ノルマなし）" : "ノルマなし";
+}
+// 単語帳ごと「英 30/121・古文 8/27」
+function quotaParts(q) {
+  return q.order.map(function (b) {
+    var x = q.books[b];
+    return bookName(b) + " " + (x.quota ? x.done + "/" + x.quota : x.done + "（ノルマなし）");
+  });
 }
 function whenLabel(ms, today) {
   var d = iso(new Date(ms)), t = hm(ms).split(" ")[1], k = days(d, today);
@@ -319,14 +332,22 @@ function overview(ses, today) {
   tb.appendChild(hr);
   ORDER.forEach(function (c) {
     var tr = el("tr"), nm = el("td"), cnt = {}, s = ses[c], lastS = s[s.length - 1];
-    s.forEach(function (x) { var d = iso(new Date(x.ended || x.started)); cnt[d] = (cnt[d] || 0) + x.items.length; });
+    // 日ごとの回答数は単語帳ごとに分けて持つ（cnt[日] = {e: 英, k: 古文}）
+    s.forEach(function (x) {
+      var d = iso(new Date(x.ended || x.started));
+      cnt[d] = cnt[d] || { e: 0, k: 0 };
+      cnt[d][x.b === "k" ? "k" : "e"] += x.items.length;
+    });
     nm.appendChild(el("span", "on", NAMES[c]));
     var lt = lastS ? lastS.ended || lastS.started : 0;
     nm.appendChild(el("span", "ol" + (!lt || days(iso(new Date(lt)), today) >= 2 ? " stale" : ""), lt ? whenLabel(lt, today) : "記録なし"));
     var q = quotaOf(c, s, today);
-    // 名前の列は狭いので詰める（「ノルマ 38/148」）
-    if (q) nm.appendChild(el("span", "oq" + (q.quota ? q.done >= q.quota ? " ok" : " ng" : ""),
-      q.quota ? "ノルマ " + q.done + "/" + q.quota : "ノルマなし"));
+    // 名前の列は狭いので単語帳ごとに 1 行ずつ（「英 30/121」「古文 8/27」）
+    if (q) q.order.forEach(function (b) {
+      var x = q.books[b];
+      nm.appendChild(el("span", "oq" + (x.quota ? x.done >= x.quota ? " ok" : " ng" : ""),
+        bookName(b) + " " + (x.quota ? x.done + "/" + x.quota : x.done + "・ノルマなし")));
+    });
     nm.onclick = function () {
       var card = document.querySelector('.st[data-c="' + c + '"]');
       if (!card) return;
@@ -334,11 +355,20 @@ function overview(ses, today) {
       card.scrollIntoView({ behavior: "smooth", block: "start" });
     };
     tr.appendChild(nm);
-    d7.forEach(function (d) { tr.appendChild(el("td", cnt[d] ? (d === today ? "t" : null) : "z", cnt[d] ? String(cnt[d]) : "—")); });
+    // 日ごとの升は上が英、下が古文
+    d7.forEach(function (d) {
+      var x = cnt[d], td = el("td", x ? (d === today ? "t" : null) : "z");
+      if (!x) td.textContent = "—";
+      else {
+        td.appendChild(el("div", x.e ? "de" : "de z", x.e ? String(x.e) : "—"));
+        td.appendChild(el("div", x.k ? "dk" : "dk z", x.k ? String(x.k) : "—"));
+      }
+      tr.appendChild(td);
+    });
     tb.appendChild(tr);
   });
   box.appendChild(tb);
-  box.appendChild(el("div", "note", "数字＝その日の回答数（全周・両方の単語帳）。赤い日付＝2 日以上やっていない。名前を押すとその生徒へ"));
+  box.appendChild(el("div", "note", "升の上＝英・下＝古文の回答数（全周）。名前の下は今日のノルマ（やった語 / 今日の分）。赤い日付＝2 日以上やっていない。名前を押すとその生徒へ"));
   return box;
 }
 // 生徒の直近 7 日：日ごとに回を並べ、押すと ✕ だった語
@@ -348,10 +378,13 @@ function histBlock(c, sessions, W, today) {
   rs.forEach(function (r) { (byDay[r.d] = byDay[r.d] || []).push(r); });
   for (var i = 0; i < 7; i++) {
     var d = addDays(today, -i), list = (byDay[d] || []).slice().reverse();
-    var ans = list.reduce(function (a, r) { return a + r.items.length; }, 0);
+    var per = { e: 0, k: 0 };
+    list.forEach(function (r) { per[r.b === "k" ? "k" : "e"] += r.items.length; });
     var hd = el("div", "hd" + (!list.length && i > 0 ? " none" : ""));
     hd.appendChild(el("span", null, md(d)));
-    hd.appendChild(el("span", "hn", list.length ? list.length + " 回・回答 " + ans : i === 0 ? "まだ" : "やっていない"));
+    hd.appendChild(el("span", "hn", list.length
+      ? list.length + " 回・回答 英 " + per.e + "・古文 " + per.k
+      : i === 0 ? "まだ" : "やっていない"));
     box.appendChild(hd);
     list.forEach(function (r) { box.appendChild(runRow(c, r, W)); });
   }
@@ -411,7 +444,7 @@ function studentBlock(c, sessions, today, open) {
   var q = quotaOf(c, sessions, today);
   sh.appendChild(el("span", "nm", NAMES[c]));
   sh.appendChild(el("span", "today" + (q && q.quota ? q.done >= q.quota ? " ok" : " ng" : ""),
-    q ? "今日 " + quotaText(q) : todayN ? "今日 " + todayN + " 回答" : "今日 まだ"));
+    q ? "今日 " + quotaParts(q).join("・") : todayN ? "今日 " + todayN + " 回答" : "今日 まだ"));
   var arrow = el("span", "arrow", open ? "▲" : "▼"); sh.appendChild(arrow);
   sum.appendChild(sh);
   var lastS = sessions[sessions.length - 1];
