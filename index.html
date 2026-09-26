@@ -372,7 +372,7 @@ function hub() {
   var ph = phaseToday(), fa = fsrsAll(), behind = 0;
   var daily = P.books.filter(function (bk) { return bk.daily; });
   P.books.forEach(function (bk) { if (!bk.daily) bk.words.forEach(function (w) { if (!fa[w[5]]) behind++; }); });
-  var allDaily = daily.length && daily.length === P.books.length, rest = daily.some(function (bk) { return wcRest(bk, todayIso()); });
+  var allDaily = daily.length && daily.length === P.books.length, rest = daily.every(function (bk) { return wcRest(bk, todayIso()); });   // 全部が休みの曜日のときだけ「新しい語は無し」
   $("hubSmall").textContent = (ph.kind !== "final" || allDaily) && daily.length
     ? (rest ? "今日は" + "日月火水木金土".charAt(new Date(todayIso() + "T00:00:00").getDay()) + "曜。新しい語は無し、復習だけ。"
             : daily.map(function (bk) { return (bk.b === "k" ? "古文" : "英単語") + " " + bk.daily + " 語"; }).join("・") + "ずつ毎日増える" + restLabel(daily[0].rest) + "。")
