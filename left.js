@@ -42,6 +42,13 @@ function wcFinalRows(bk, fsrs, today) {
 //   渡した日から今日までの足す日（rest の曜日＝日曜を除く）の数×daily 語（テスト範囲の中で）。休んだ日の分は次の足す日に回る。
 //   rest の曜日は新しい語を出さない（復習だけ）。前週の範囲でまだやっていない語は先に全部出す。返すのは今日出す新しい語の行番号（番号順）
 function wcRest(bk, day) { return (bk.rest || []).indexOf(new Date(day + "T00:00:00").getDay()) >= 0; }
+// 但し書き「（土日は復習だけ）」（2026-09-26 宮本で日曜だけでなく複数曜日に）
+function restLabel(rest) {
+  var s = (rest || []).slice().sort();
+  if (!s.length) return "";
+  if (s.join() === "0,6") return "（土日は復習だけ）";
+  return "（" + s.map(function (i) { return "日月火水木金土".charAt(i) + "曜"; }).join("・") + "は復習だけ）";
+}
 // 渡した日〜day（含む）のうち新しい語を足す日の数
 function wcNewDays(bk, handout, day) {
   var n = 0;

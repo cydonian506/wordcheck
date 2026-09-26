@@ -371,8 +371,8 @@ function hub() {
   P.books.forEach(function (bk) { if (!bk.daily) bk.words.forEach(function (w) { if (!fa[w[5]]) behind++; }); });
   var allDaily = daily.length && daily.length === P.books.length, rest = daily.some(function (bk) { return wcRest(bk, todayIso()); });
   $("hubSmall").textContent = (ph.kind !== "final" || allDaily) && daily.length
-    ? (rest ? "今日は日曜。新しい語は無し、復習だけ。"
-            : daily.map(function (bk) { return (bk.b === "k" ? "古文" : "英単語") + " " + bk.daily + " 語"; }).join("・") + "ずつ毎日増える（日曜は復習だけ）。")
+    ? (rest ? "今日は" + "日月火水木金土".charAt(new Date(todayIso() + "T00:00:00").getDay()) + "曜。新しい語は無し、復習だけ。"
+            : daily.map(function (bk) { return (bk.b === "k" ? "古文" : "英単語") + " " + bk.daily + " 語"; }).join("・") + "ずつ毎日増える" + restLabel(daily[0].rest) + "。")
       + "毎日「今日の分」を終わらせよう"
     : ph.kind === "final" ? (days(todayIso(), P.test) === 1 ? "明日はテスト。今日はテスト範囲を全部 1 周しよう" : "テスト範囲を全部 1 周しよう")
     : ph.kind === "review" ? (behind ? "まだやっていない語が " + behind + " 語。今日中に追いつこう" : "新しい語は出し切った。今日は復習の日")
