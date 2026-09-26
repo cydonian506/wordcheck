@@ -381,6 +381,9 @@ function hub() {
     : ph.kind === "review" ? (behind ? "まだやっていない語が " + behind + " 語。今日中に追いつこう" : "新しい語は出し切った。今日は復習の日")
     : "新しい語は あと " + ph.left + " 日で出し切る。毎日「今日の分」を終わらせよう";
   var box = $("books"), total = 0, per = []; box.innerHTML = "";
+  // 同じ種類のデッキが 2 つあるとき（越智の英語 1〜 と 982〜）は、先頭の番号を添えて見分ける
+  var tally = {};
+  P.books.forEach(function (bk) { var k = bk.b === "k" ? "古文" : "英"; tally[k] = (tally[k] || 0) + 1; });
   P.books.forEach(function (bk) {
     var deck = todayDeck(bk), n = bk.words.length, k = learned(bk), card = el("div", "book");
     card.appendChild(el("div", "name", bk.label));
@@ -397,7 +400,9 @@ function hub() {
     more.onclick = function () { begin(bk, "more", moreDeck(bk), 1); };
     card.appendChild(more);
     box.appendChild(card);
-    total += deck.length; per.push((bk.b === "k" ? "古文 " : "英 ") + deck.length + " 語");
+    var nm = bk.b === "k" ? "古文" : "英";
+    if (tally[nm] > 1 && bk.words[0]) nm += " " + bk.words[0][4] + "〜";
+    total += deck.length; per.push(nm + " " + deck.length + " 語");
   });
   $("leftBox").classList.toggle("zero", !total);
   $("leftNum").innerHTML = "";
