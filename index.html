@@ -78,6 +78,7 @@ header{padding:calc(12px + env(safe-area-inset-top)) 18px 6px}
 .book .name{font-size:17px;font-weight:700}
 .book .range{margin-top:2px;font-size:13px;color:var(--sub)}
 .book .learned{margin-top:10px;font-size:13px;color:var(--sub);font-variant-numeric:tabular-nums}
+.book .tnote{margin-top:6px;font-size:12px;color:var(--acc);font-variant-numeric:tabular-nums}
 .book .lbar{height:6px;border-radius:3px;background:var(--line);overflow:hidden;margin-top:4px}
 .book .lbar>div{height:100%;background:var(--ok)}
 .book .go{display:block;width:100%;margin-top:12px;border:0;border-radius:10px;padding:14px;font-size:17px;font-weight:700;background:var(--acc);color:#fff}
@@ -118,7 +119,8 @@ table.days tr.today td:first-child{font-weight:700}
 .card .gok{background:rgba(26,157,92,.14)}
 .card .mark{position:absolute;top:14px;font-size:30px;font-weight:700;opacity:0;pointer-events:none}
 .card .mng{left:18px;color:var(--ng)}.card .mok{right:18px;color:var(--ok)}
-.card .tag{position:absolute;top:14px;left:50%;transform:translateX(-50%);font-size:12px;color:var(--sub)}
+.card .tag{position:absolute;top:14px;left:50%;transform:translateX(-50%);font-size:12px;color:var(--sub);display:flex;gap:6px;align-items:center;white-space:nowrap}
+.card .tag .test{color:var(--acc);border:1px solid var(--acc);border-radius:999px;padding:1px 8px;font-weight:600}
 .card .no{position:relative;font-size:13px;color:var(--sub)}
 .card .word{position:relative;font-size:clamp(28px,9vw,40px);font-weight:700;text-align:center;word-break:break-word;margin-top:6px;line-height:1.15}
 .card .say{position:relative;margin-top:10px;width:44px;height:44px;border-radius:50%;border:1px solid var(--line);background:var(--card);color:var(--acc);font-size:18px;display:flex;align-items:center;justify-content:center;touch-action:manipulation}
@@ -312,6 +314,7 @@ function dueCards(b) {
 // 決め方は left.js（前半で新しい語を出し切る・テスト前日は範囲を 1 周）。新しい語はその日に初めて開いたときに
 // ランダムに決めて端末に残す
 function testRows(bk) { return bk.tn != null ? bk.words.slice(bk.words.length - bk.tn).map(function (w) { return w[5]; }) : bk.words.map(function (w) { return w[5]; }); }
+function testSet(bk) { var m = {}; testRows(bk).forEach(function (r) { m[r] = 1; }); return m; }
 function phaseToday() { return wcPhase(P.handout, P.test, todayIso()); }
 // 本人決定（2026-09-17）：全部 ○ にするまで終わらない。途中でやめたら、今日最後が ✕ の語は今日の分に残る
 function pendKey() { return "pend:" + ME + ":" + todayIso(); }
@@ -384,6 +387,9 @@ function hub() {
     card.appendChild(el("div", "range", bk.range));
     card.appendChild(el("div", "learned", "範囲のうち やった語 " + k + " / " + n));
     var lb = el("div", "lbar"), fill = el("div"); fill.style.width = (n ? k / n * 100 : 0) + "%"; lb.appendChild(fill); card.appendChild(lb);
+    // 生徒要望（2026-09-26）：今日の分のうち何語が今週のテストに出るかを出す
+    var ts = testSet(bk), tcount = deck.filter(function (w) { return ts[w[5]]; }).length;
+    if (deck.length) card.appendChild(el("div", "tnote", "うち テスト範囲 " + tcount + " 語"));
     var go = el("button", "go" + (deck.length ? "" : " done"), deck.length ? "今日の分　" + deck.length + " 語" : "今日の分は終わり");
     if (deck.length) go.onclick = function () { begin(bk, "today", todayDeck(bk), 1); };
     card.appendChild(go);
@@ -543,6 +549,7 @@ function begin(bk, kind, deck, round) {
   if (!deck.length) return;
   S = { book: bk, kind: kind, round: round, deck: deck, idx: deck.map(function (w, k) { return k; }), i: 0, res: [], times: [], fs: [], undo: 0,
         ng: ngMap(),                                       // 例文を出すかの判定に使う（回の途中では増やさない）
+        test: testSet(bk),                                 // 今週のテスト範囲の語（生徒要望 2026-09-26：カードに「テスト範囲」と出す）
         started: Date.now(), id: rid(), sent: false, sentN: 0, part: 0, pp: [], shownAt: 0, flipAt: 0, flipped: false,
         ready: {}, pr: [], timer: null };                    // ready：デッキの番号 → 出してよい時刻（✕の語だけ。一覧から始め直したら待たない）
   var names = { today: "今日の分", more: "もっとやる", miss: "ミスだけ", again: "もう一周", weak: "苦手語" };
@@ -573,7 +580,15 @@ function render() {
   var w = word(), card = el("div", "card" + (showEx(w) ? " withEx" : ""));
   card.appendChild(el("div", "glow gng")); card.appendChild(el("div", "glow gok"));
   card.appendChild(el("div", "mark mng", "✕")); card.appendChild(el("div", "mark mok", "○"));
-  if (PERIOD && !fsrsAll()[w[5]]) card.appendChild(el("div", "tag", "はじめて"));
+  var tags = [];
+  if (PERIOD && !fsrsAll()[w[5]]) tags.push(["first", "はじめて"]);
+  // 生徒要望（2026-09-26）：今週のテストに出る語はカードで分かるようにする（デッキは分けない）
+  if (PERIOD && S.test && S.test[w[5]]) tags.push(["test", "テスト範囲"]);
+  if (tags.length) {
+    var tg = el("div", "tag");
+    tags.forEach(function (t) { tg.appendChild(el("span", t[0], t[1])); });
+    card.appendChild(tg);
+  }
   card.appendChild(el("div", "no", "No." + (w[4] || w[0])));
   card.appendChild(el("div", "word", w[1]));
   if (w[3]) card.appendChild(el("div", "pos", w[3]));   // 本人希望（2026-09-19）：品詞は表に出す（英単語だけ、推定）
