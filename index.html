@@ -366,6 +366,13 @@ function moreDeck(bk) {
 function learned(bk) { var all = fsrsAll(); return bk.words.filter(function (w) { return all[w[5]]; }).length; }
 
 // ================================================================ 一覧
+// デッキの短い名前。同じ種類（英／古文）が 2 つあるときは先頭の番号を添えて見分ける（越智 2026-09-26）
+function deckName(bk) {
+  var nm = bk.b === "k" ? "古文" : "英";
+  var same = P.books.filter(function (x) { return (x.b === "k") === (bk.b === "k"); }).length;
+  if (same > 1 && bk.words[0]) nm += " " + bk.words[0][4] + "〜";
+  return nm;
+}
 function hub() {
   screen("hub"); $("title").textContent = "単語チェック"; $("count").textContent = "";
   $("hubBig").textContent = "テスト " + md(P.test);
@@ -375,15 +382,12 @@ function hub() {
   var allDaily = daily.length && daily.length === P.books.length, rest = daily.every(function (bk) { return wcRest(bk, todayIso()); });   // 全部が休みの曜日のときだけ「新しい語は無し」
   $("hubSmall").textContent = (ph.kind !== "final" || allDaily) && daily.length
     ? (rest ? "今日は" + "日月火水木金土".charAt(new Date(todayIso() + "T00:00:00").getDay()) + "曜。新しい語は無し、復習だけ。"
-            : daily.map(function (bk) { return (bk.b === "k" ? "古文" : "英単語") + " " + bk.daily + " 語"; }).join("・") + "ずつ毎日増える" + restLabel(daily[0].rest) + "。")
+            : daily.map(function (bk) { return deckName(bk) + " " + bk.daily + " 語" + restLabel(bk.rest); }).join("・") + "ずつ毎日増える。")
       + "毎日「今日の分」を終わらせよう"
     : ph.kind === "final" ? (days(todayIso(), P.test) === 1 ? "明日はテスト。今日はテスト範囲を全部 1 周しよう" : "テスト範囲を全部 1 周しよう")
     : ph.kind === "review" ? (behind ? "まだやっていない語が " + behind + " 語。今日中に追いつこう" : "新しい語は出し切った。今日は復習の日")
     : "新しい語は あと " + ph.left + " 日で出し切る。毎日「今日の分」を終わらせよう";
   var box = $("books"), total = 0, per = []; box.innerHTML = "";
-  // 同じ種類のデッキが 2 つあるとき（越智の英語 1〜 と 982〜）は、先頭の番号を添えて見分ける
-  var tally = {};
-  P.books.forEach(function (bk) { var k = bk.b === "k" ? "古文" : "英"; tally[k] = (tally[k] || 0) + 1; });
   P.books.forEach(function (bk) {
     var deck = todayDeck(bk), n = bk.words.length, k = learned(bk), card = el("div", "book");
     card.appendChild(el("div", "name", bk.label));
@@ -400,9 +404,7 @@ function hub() {
     more.onclick = function () { begin(bk, "more", moreDeck(bk), 1); };
     card.appendChild(more);
     box.appendChild(card);
-    var nm = bk.b === "k" ? "古文" : "英";
-    if (tally[nm] > 1 && bk.words[0]) nm += " " + bk.words[0][4] + "〜";
-    total += deck.length; per.push(nm + " " + deck.length + " 語");
+    total += deck.length; per.push(deckName(bk) + " " + deck.length + " 語");
   });
   $("leftBox").classList.toggle("zero", !total);
   $("leftNum").innerHTML = "";
