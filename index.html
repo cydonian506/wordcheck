@@ -231,7 +231,7 @@ var RELEARN_GAP = 5, RELEARN_MS = 60000;
 // 表＝例文（覚える部分をハイライト）、裏＝訳（該当部分をハイライト）。例文が無い語は今までどおり
 var EX_MIN = 3;
 // 送る記録の day 欄に入れる周の種類（Apps Script を出し直さずに済むよう mode は fsrs のまま）
-var KIND = { today: 0, more: 1, miss: 2, again: 3, weak: 4 };
+var KIND = { today: 0, more: 1, miss: 2, again: 3, weak: 4, test: 5 };
 var P = null, S = null, busy = false, INDEX = {}, BOOK = {};   // INDEX：行番号 → [0, 単語, 訳, 品詞, 単語帳の番号, 行番号, 例文, 例文の訳, 例文の該当部分, 訳の該当部分]、BOOK：行番号 → "e"/"k"
 var $ = function (id) { return document.getElementById(id); };
 function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
@@ -363,6 +363,8 @@ function moreDeck(bk) {
   }
   return shuffle(bk.words.slice()).slice(0, 50);
 }
+// テスト範囲：今週のテスト範囲の語を全部（生徒要望 2026-10-03：今日の分とは別に、いつでも範囲だけ見直したい）
+function testDeck(bk) { return shuffle(testRows(bk).filter(function (r) { return INDEX[r]; }).map(function (r) { return INDEX[r]; })); }
 function learned(bk) { var all = fsrsAll(); return bk.words.filter(function (w) { return all[w[5]]; }).length; }
 
 // ================================================================ 一覧
@@ -403,6 +405,9 @@ function hub() {
     var more = el("button", "more", "もっとやる");
     more.onclick = function () { begin(bk, "more", moreDeck(bk), 1); };
     card.appendChild(more);
+    var tn = testRows(bk).length, tb = el("button", "more", "テスト範囲だけやる（" + tn + " 語）");
+    tb.onclick = function () { begin(bk, "test", testDeck(bk), 1); };
+    if (tn) card.appendChild(tb);
     box.appendChild(card);
     total += deck.length; per.push(deckName(bk) + " " + deck.length + " 語");
   });
@@ -559,7 +564,7 @@ function begin(bk, kind, deck, round) {
         test: testSet(bk),                                 // 今週のテスト範囲の語（生徒要望 2026-09-26：カードに「テスト範囲」と出す）
         started: Date.now(), id: rid(), sent: false, sentN: 0, part: 0, pp: [], shownAt: 0, flipAt: 0, flipped: false,
         ready: {}, pr: [], timer: null };                    // ready：デッキの番号 → 出してよい時刻（✕の語だけ。一覧から始め直したら待たない）
-  var names = { today: "今日の分", more: "もっとやる", miss: "ミスだけ", again: "もう一周", weak: "苦手語" };
+  var names = { today: "今日の分", more: "もっとやる", miss: "ミスだけ", again: "もう一周", weak: "苦手語", test: "テスト範囲" };
   $("title").textContent = (bk.label || "") + "　" + names[kind] + (round > 1 ? "　" + round + "周目" : "");
   screen("swipe"); render();
 }
