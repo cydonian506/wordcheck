@@ -244,6 +244,8 @@ var WD = "日月火水木金土", REVIEW_MAX = 100, MORE = 20, WEAK_MAX = 30;
 // ステップを全部 正解 で抜けるまで今日の分から外れない（前の版は ✕ のあと 1 回 ○ で抜けられたので、答えを見た直後に ○ にして終わっていた）
 var LEARN_STEPS = [1, 10], RELEARN_STEPS = [10];
 var GRADE_NAME = { 1: "もう一度", 2: "難しい", 3: "正解", 4: "簡単" };
+// 本人決定（2026-10-10）：ボタンの上の「次に出るまで」（1分・4日など）は一旦出さない。出すときは true に
+var SHOW_IV = false;
 // 本人希望（2026-09-24）：✕が EX_MIN 回たまった語は、Anki のように例文を出す。
 // 表＝例文（覚える部分をハイライト）、裏＝訳（該当部分をハイライト）。例文が無い語は今までどおり
 var EX_MIN = 3;
@@ -609,7 +611,9 @@ function setButtons() {
   $("bng").disabled = $("bok").disabled = !S.flipped; $("bundo").disabled = S.i <= S.sentN;
   [1, 2, 3, 4].forEach(function (g) {
     var b = $("g" + g); b.disabled = !S.flipped;
-    b.querySelector(".iv").textContent = PERIOD && S.flipped && S.i < S.idx.length ? ivLabel(g) : "";
+    var iv = b.querySelector(".iv");
+    iv.style.display = SHOW_IV ? "" : "none";
+    iv.textContent = SHOW_IV && PERIOD && S.flipped && S.i < S.idx.length ? ivLabel(g) : "";
   });
 }
 function render() {
