@@ -178,9 +178,11 @@ function fsrsNext(st, g, t) {
   var d2 = clampD(FW[7] * FW[4] + (1 - FW[7]) * (d - FW[6] * (g - 3)));
   var s2 = g === 1
     ? Math.min(s, FW[11] * Math.pow(d2, -FW[12]) * (Math.pow(s + 1, FW[13]) - 1) * Math.exp(FW[14] * (1 - r)))
-    : s * (Math.exp(FW[8]) * (11 - d2) * Math.pow(s, -FW[9]) * (Math.exp(FW[10] * (1 - r)) - 1) + 1);
+    : s * (Math.exp(FW[8]) * (11 - d2) * Math.pow(s, -FW[9]) * (Math.exp(FW[10] * (1 - r)) - 1) * (g === 2 ? FW[15] : 1) * (g === 4 ? FW[16] : 1) + 1);
   return [Math.max(0.1, s2), d2];
 }
+// 回答の評価 1〜4（2026-10-10〜 items の 5 つ目。それより前の記録は ○＝Good・✕＝Again）
+function gradeOf(it) { return it[4] >= 1 && it[4] <= 4 ? it[4] : it[1] ? 3 : 1; }
 
 // ================================================================ 読み込み
 var DATA = null;
@@ -265,12 +267,12 @@ function quotaOf(c, sessions, today) {
   var st = {}, last = {}, doneToday = {}, recs = [];
   sessions.forEach(function (s) {
     var d = iso(new Date(s.ended || s.started));
-    s.items.forEach(function (it) { recs.push({ d: d, row: String(it[0]), b: s.b, ok: !!it[1] }); });
+    s.items.forEach(function (it) { recs.push({ d: d, row: String(it[0]), b: s.b, ok: !!it[1], g: gradeOf(it) }); });
   });
   recs.forEach(function (r) {
     if (r.d === today) { doneToday[r.row] = r.b; return; }   // 今朝の時点の状態（今日のぶんは入れない）
     if (last[r.row] === r.d) return;
-    st[r.row] = fsrsNext(st[r.row], r.ok ? 3 : 1, r.row in last ? days(last[r.row], r.d) : 0);
+    st[r.row] = fsrsNext(st[r.row], r.g, r.row in last ? days(last[r.row], r.d) : 0);
     last[r.row] = r.d;
   });
   var fsrs = {}, bookOf = {};
@@ -426,12 +428,12 @@ function studentBlock(c, sessions, today, open) {
   var recs = [];
   sessions.forEach(function (s) {
     var d = iso(new Date(s.ended || s.started));
-    s.items.forEach(function (it) { recs.push({ d: d, row: String(it[0]), ok: !!it[1], b: s.b }); });
+    s.items.forEach(function (it) { recs.push({ d: d, row: String(it[0]), ok: !!it[1], b: s.b, g: gradeOf(it) }); });
   });
   var st = {}, last = {}, first = {}, firsts = [];
   recs.forEach(function (r) {
     if (last[r.row] === r.d) return;
-    st[r.row] = fsrsNext(st[r.row], r.ok ? 3 : 1, r.row in last ? days(last[r.row], r.d) : 0);
+    st[r.row] = fsrsNext(st[r.row], r.g, r.row in last ? days(last[r.row], r.d) : 0);
     last[r.row] = r.d;
     if (!(r.row in first)) first[r.row] = r.d;
     firsts.push(r);

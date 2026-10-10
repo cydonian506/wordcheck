@@ -13,9 +13,12 @@
 <meta name="apple-mobile-web-app-title" content="単語チェック">
 <!--
   単語チェック（宿題の単語アプリ）
-  - 期間の QR（?s=<期間ID>、7 文字目が p）：単語帳ごとに「今日の分」→ 単語だけ見て答える → タップで訳 → ○／✕。
+  - 期間の QR（?s=<期間ID>、7 文字目が p）：単語帳ごとに「今日の分」→ 単語だけ見て答える → タップで訳 → 4 つのボタンで評価。
     今日の分＝FSRS で期限が来た語（最大 100）＋まだやっていない範囲の語（残り÷テストまでの日数、範囲の中でランダム）。
-    終わったら「もっとやる」。評価は ○＝Good・✕＝Again の 2 択。その日の最初の 1 回だけが FSRS に効く（同じ日の周回は練習）。
+    終わったら「もっとやる」。その日の最初の 1 回だけが FSRS に効く（同じ日の周回は練習）。
+    本人決定（2026-10-10）：ボタンと出し方を Anki に合わせる。もう一度＝Again・難しい＝Hard・正解＝Good・簡単＝Easy。
+    新しい語は学習ステップ 1 分→10 分、忘れた語（復習で もう一度）は 10 分。ステップを全部 正解 で抜けるまで今日の分から外れない。
+    ほかに出す語が無いときは、待たずに学習中の語を出す（Anki の「先に学習」）。フリックは 左＝もう一度・右＝正解。
     本人決定（2026-09-16）：日ごとの 50 語はやめる（紙 1 面の都合だったため）、苦手語は誤答プールに入れず FSRS だけ。
   - 紙の QR（?s=<シートID>、7 文字目が e/k）：紙の宿題の答え合わせのあとに誤答を入れる（前からの形）。
   見た目（2026-09-16 本人希望）：シンプルに。演出なし、白基調。フリックはそのまま。
@@ -112,9 +115,6 @@ table.days tr.today td:first-child{font-weight:700}
 .card{position:absolute;inset:0;border-radius:16px;background:var(--card);border:1px solid var(--line);box-shadow:0 2px 10px rgba(0,0,0,.06);
  display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px 20px;touch-action:none;user-select:none;-webkit-user-select:none;will-change:transform;overflow:hidden}
 .card .glow{position:absolute;inset:0;opacity:0;pointer-events:none}
-.card .waitN{font-size:40px;font-weight:700;margin:6px 0}
-.card .waitGo{border:0;border-radius:10px;padding:12px 36px;margin:4px 0 12px;font-size:17px;font-weight:700;background:var(--acc);color:#fff}
-.card .waitSub{font-size:13px;opacity:.7;text-align:center;line-height:1.6}
 .card .gng{background:rgba(217,61,74,.14)}
 .card .gok{background:rgba(26,157,92,.14)}
 .card .mark{position:absolute;top:14px;font-size:30px;font-weight:700;opacity:0;pointer-events:none}
@@ -144,6 +144,16 @@ table.days tr.today td:first-child{font-weight:700}
 #bng,#bok{width:68px;height:68px;font-size:30px;font-weight:700}
 #bng{color:var(--ng)}#bok{color:var(--ok)}
 #bundo{width:48px;height:48px;font-size:20px;color:var(--sub)}
+/* Anki と同じ 4 つのボタン（上に次に出るまでの間隔）。紙の QR は ○✕ のまま */
+.grades{display:none;gap:6px;width:100%;max-width:380px;margin-top:12px}
+.grades button{flex:1;border:1px solid var(--line);border-radius:10px;background:var(--card);padding:6px 2px 9px;display:flex;flex-direction:column;align-items:center;gap:2px;touch-action:manipulation}
+.grades button:disabled{opacity:.35}
+.grades .iv{font-size:11px;color:var(--sub)}
+.grades .lb{font-size:15px;font-weight:700}
+#g1 .lb{color:var(--ng)}#g2 .lb{color:#8a6d1f}#g3 .lb{color:var(--ok)}#g4 .lb{color:var(--acc)}
+.anki .grades{display:flex}
+.anki .btns{margin-top:8px}
+.anki #bng,.anki #bok{display:none}
 
 /* 結果 */
 #review{display:none;padding:8px 18px 40px}
@@ -189,7 +199,13 @@ button.w.on .t{color:var(--ng)}
 
 <div id="swipe">
  <div id="stage"></div>
- <div class="hint"><span>← ミス</span><span>覚えてた →</span></div>
+ <div class="hint"><span id="hintL">← ミス</span><span id="hintR">覚えてた →</span></div>
+ <div class="grades">
+  <button id="g1"><span class="iv"></span><span class="lb">もう一度</span></button>
+  <button id="g2"><span class="iv"></span><span class="lb">難しい</span></button>
+  <button id="g3"><span class="iv"></span><span class="lb">正解</span></button>
+  <button id="g4"><span class="iv"></span><span class="lb">簡単</span></button>
+ </div>
  <div class="btns">
   <button class="round" id="bng" aria-label="ミス">✕</button>
   <button class="round" id="bundo" aria-label="ひとつ戻す">↶</button>
@@ -224,9 +240,10 @@ if (PERIOD) {
   if (CUR && CUR.s && CUR.k && CUR.s.slice(7, 13) > SID.slice(7, 13)) { SID = CUR.s; KEY = CUR.k; }
 }
 var WD = "日月火水木金土", REVIEW_MAX = 100, MORE = 20, WEAK_MAX = 30;
-// 本人決定（2026-09-19）：✕の語は Anki の再学習のように、ほかの語を RELEARN_GAP 語はさんで、かつ RELEARN_MS たってから出し直す
-// （すぐ後ろに出ると覚えていなくても ○ にできてしまうため）。○ にするまで今日の分から外れない
-var RELEARN_GAP = 5, RELEARN_MS = 60000;
+// 本人決定（2026-10-10）：Anki の既定と同じ学習ステップ（分）。新しい語＝LEARN_STEPS、復習で もう一度 にした語＝RELEARN_STEPS。
+// ステップを全部 正解 で抜けるまで今日の分から外れない（前の版は ✕ のあと 1 回 ○ で抜けられたので、答えを見た直後に ○ にして終わっていた）
+var LEARN_STEPS = [1, 10], RELEARN_STEPS = [10];
+var GRADE_NAME = { 1: "もう一度", 2: "難しい", 3: "正解", 4: "簡単" };
 // 本人希望（2026-09-24）：✕が EX_MIN 回たまった語は、Anki のように例文を出す。
 // 表＝例文（覚える部分をハイライト）、裏＝訳（該当部分をハイライト）。例文が無い語は今までどおり
 var EX_MIN = 3;
@@ -254,7 +271,7 @@ function md(s) { var d = new Date(s + "T00:00:00"); return (d.getMonth() + 1) + 
 function shuffle(a) { for (var j = a.length - 1; j > 0; j--) { var r = Math.floor(Math.random() * (j + 1)), t = a[j]; a[j] = a[r]; a[r] = t; } return a; }
 
 // ================================================================ FSRS（4.5・既定の重み。weekly_paper.py と同じ式）
-// ○＝Good(3)、✕＝Again(1)。その日の最初の 1 回だけ効かせる。目標の想起率 0.9 → 次の間隔＝安定度（日）
+// 評価は 1＝Again・2＝Hard・3＝Good・4＝Easy（紙の QR は ○＝3・✕＝1）。その日の最初の 1 回だけ効かせる。目標の想起率 0.9 → 次の間隔＝安定度（日）
 var FW = [0.4872, 1.4003, 3.7145, 13.8206, 5.1618, 1.2298, 0.8975, 0.031, 1.6474, 0.1367, 1.0461, 2.1072, 0.0793, 0.3246, 1.587, 0.2272, 2.8755];
 var DECAY = -0.5, FACTOR = 19 / 81;
 function clampD(d) { return Math.min(10, Math.max(1, d)); }
@@ -265,7 +282,7 @@ function fsrsNext(st, g, t) {
   var d2 = clampD(FW[7] * FW[4] + (1 - FW[7]) * (d - FW[6] * (g - 3)));
   var s2 = g === 1
     ? Math.min(s, FW[11] * Math.pow(d2, -FW[12]) * (Math.pow(s + 1, FW[13]) - 1) * Math.exp(FW[14] * (1 - r)))
-    : s * (Math.exp(FW[8]) * (11 - d2) * Math.pow(s, -FW[9]) * (Math.exp(FW[10] * (1 - r)) - 1) + 1);
+    : s * (Math.exp(FW[8]) * (11 - d2) * Math.pow(s, -FW[9]) * (Math.exp(FW[10] * (1 - r)) - 1) * (g === 2 ? FW[15] : 1) * (g === 4 ? FW[16] : 1) + 1);
   return [Math.max(0.1, s2), d2];
 }
 function fsrsKey() { return "fsrs:" + ME; }
@@ -279,13 +296,13 @@ function fsrsSeed() {
   });
   store(fsrsKey(), mine);
 }
-function fsrsRate(row, ok) {
+function fsrsRate(row, g) {
   if (!row) return null;
   var all = fsrsAll(), cur = all[row], today = todayIso();
   if (cur && cur[2] === today) return null;            // 同じ日の 2 回目以降は練習
-  var next = fsrsNext(cur ? [cur[0], cur[1]] : null, ok ? 3 : 1, cur ? days(cur[2], today) : 0);
+  var next = fsrsNext(cur ? [cur[0], cur[1]] : null, g, cur ? days(cur[2], today) : 0);
   all[row] = [next[0], next[1], today]; store(fsrsKey(), all);
-  histAdd(row, today, ok);
+  histAdd(row, today, g > 1);
   return [row, cur || null];                             // 戻すときのために前の状態を返す
 }
 function fsrsUndo(prev) { if (!prev) return; var all = fsrsAll(); if (prev[1]) all[prev[0]] = prev[1]; else delete all[prev[0]]; store(fsrsKey(), all); histPop(prev[0]); }
@@ -319,7 +336,8 @@ function phaseToday() { return wcPhase(P.handout, P.test, todayIso()); }
 // 本人決定（2026-09-17）：全部 ○ にするまで終わらない。途中でやめたら、今日最後が ✕ の語は今日の分に残る
 function pendKey() { return "pend:" + ME + ":" + todayIso(); }
 function pendAll() { return store(pendKey()) || {}; }
-// 値は✕にした時刻（前の版は 1）。出し直しの時刻を決めるのに使う
+// 値は学習ステップの状態 [次に出す時刻, ステップの番号, 再学習なら 1]（前の版は ✕ にした時刻か 1。pendState で読み替える）
+function pendState(v) { return Array.isArray(v) ? v : [0, 0, 0]; }
 function setPend(row, v) { if (!row) return; var p = pendAll(); if (v) p[row] = v; else delete p[row]; store(pendKey(), p); }
 function pendCards(b, skip) { var p = pendAll(); return Object.keys(p).filter(function (r) { return BOOK[r] === b && INDEX[r] && !(skip && skip[r]); }).map(function (r) { return INDEX[r]; }); }
 function withPend(bk, deck) { var inD = {}; deck.forEach(function (e) { inD[e[5]] = 1; }); return pendCards(bk.b, inD).concat(deck); }
@@ -563,16 +581,20 @@ function begin(bk, kind, deck, round) {
         ng: ngMap(),                                       // 例文を出すかの判定に使う（回の途中では増やさない）
         test: testSet(bk),                                 // 今週のテスト範囲の語（生徒要望 2026-09-26：カードに「テスト範囲」と出す）
         started: Date.now(), id: rid(), sent: false, sentN: 0, part: 0, pp: [], shownAt: 0, flipAt: 0, flipped: false,
-        ready: {}, pr: [], timer: null };                    // ready：デッキの番号 → 出してよい時刻（✕の語だけ。一覧から始め直したら待たない）
+        gr: [], lst: {}, pl: [], pu: [], timer: null };      // lst：デッキの番号 → 学習ステップの状態 [次に出す時刻, ステップ, 再学習]（学習中の語だけ）
+  // 前の回で学習中のまま終わった語は、その続きから（出す時刻も守る。ほかに出す語が無ければ待たずに出す）
+  if (PERIOD) { var pd = pendAll(); deck.forEach(function (w, k) { if (pd[w[5]]) S.lst[k] = pendState(pd[w[5]]); }); }
+  $("swipe").classList.toggle("anki", !!PERIOD);
+  $("hintL").textContent = PERIOD ? "← もう一度" : "← ミス"; $("hintR").textContent = PERIOD ? "正解 →" : "覚えてた →";
   var names = { today: "今日の分", more: "もっとやる", miss: "ミスだけ", again: "もう一周", weak: "苦手語", test: "テスト範囲" };
   $("title").textContent = (bk.label || "") + "　" + names[kind] + (round > 1 ? "　" + round + "周目" : "");
   screen("swipe"); render();
 }
 function word() { return S.deck[S.idx[S.i]]; }
-// 語ごとに見て、○＝もう ○ になった語、✕＝まだ ○ になっていないミスの語（PERIOD 以外は 1 周だけなので回答ごと）
+// 語ごとに見て、○＝今日の分を抜けた語、✕＝まだ学習ステップの途中の語（PERIOD 以外は 1 周だけなので回答ごと）
 function counts() {
   var ok = 0, ng = 0, last = {};
-  for (var j = 0; j < S.i; j++) last[S.idx[j]] = S.res[j];
+  for (var j = 0; j < S.i; j++) last[S.idx[j]] = PERIOD ? !!S.lst[S.idx[j]] : S.res[j];
   Object.keys(last).forEach(function (k) { if (last[k]) ng++; else ok++; });
   return [ok, ng];
 }
@@ -583,12 +605,18 @@ function progress() {
   $("barOk").style.width = (c[0] / n * 100) + "%"; $("barNg").style.width = (c[1] / n * 100) + "%";
   $("nOk").textContent = "○ " + c[0]; $("nNg").textContent = "✕ " + c[1];
 }
-function setButtons() { $("bng").disabled = $("bok").disabled = !S.flipped; $("bundo").disabled = S.i <= S.sentN; }
+function setButtons() {
+  $("bng").disabled = $("bok").disabled = !S.flipped; $("bundo").disabled = S.i <= S.sentN;
+  [1, 2, 3, 4].forEach(function (g) {
+    var b = $("g" + g); b.disabled = !S.flipped;
+    b.querySelector(".iv").textContent = PERIOD && S.flipped && S.i < S.idx.length ? ivLabel(g) : "";
+  });
+}
 function render() {
   var stage = $("stage"); [].slice.call(stage.querySelectorAll(".card")).forEach(function (c) { c.remove(); }); progress();
   clearTimeout(S.timer);
   if (S.i >= S.idx.length) { finish(); return; }
-  if (PERIOD && !pickReady()) { waitCard(stage); return; }
+  if (PERIOD) pickNext();
   var w = word(), card = el("div", "card" + (showEx(w) ? " withEx" : ""));
   card.appendChild(el("div", "glow gng")); card.appendChild(el("div", "glow gok"));
   card.appendChild(el("div", "mark mng", "✕")); card.appendChild(el("div", "mark mok", "○"));
@@ -620,35 +648,48 @@ function render() {
   card.onpointerup = card.onpointercancel = function () {
     if (sx === null) return; sx = null;
     if (!S.flipped) { card.style.transition = "transform .2s ease-out"; card.style.transform = ""; flip(card, back); return; }
-    if (dx > 90) decide(false, 1); else if (dx < -90) decide(true, -1);
+    if (dx > 90) decide(3, 1); else if (dx < -90) decide(1, -1);
     else { card.style.transition = "transform .25s ease-out"; card.style.transform = ""; tint(card, 0); }
   };
 }
-// まだ出せない✕の語を飛ばして、出してよい語を今の位置に持ってくる。全部まだなら false
-function pickReady() {
-  var now = Date.now();
-  for (var j = S.i; j < S.idx.length; j++) {
-    if (S.ready[S.idx[j]] > now) continue;
-    if (j > S.i) S.idx.splice(S.i, 0, S.idx.splice(j, 1)[0]);
-    return true;
+// 次に出す語を今の位置に持ってくる（Anki と同じ順）：
+//   1. 学習中で時刻が来た語（早いもの順）  2. まだ出していない語（並びのまま）  3. 学習中の語の一番早いもの（待たずに出す＝Anki の「先に学習」）
+function pickNext() {
+  var now = Date.now(), best = -1, j, L;
+  for (j = S.i; j < S.idx.length; j++) {
+    L = S.lst[S.idx[j]];
+    if (L && L[0] <= now && (best < 0 || L[0] < S.lst[S.idx[best]][0])) best = j;
   }
-  return false;
+  if (best < 0) for (j = S.i; j < S.idx.length; j++) if (!S.lst[S.idx[j]]) { best = j; break; }
+  if (best < 0) for (j = S.i; j < S.idx.length; j++) if (best < 0 || S.lst[S.idx[j]][0] < S.lst[S.idx[best]][0]) best = j;
+  if (best > S.i) S.idx.splice(S.i, 0, S.idx.splice(best, 1)[0]);
 }
-// 残りが出し直し待ちの✕の語だけのとき：時間まで待つか「もう一度」ですぐ出す
-// 本人決定（2026-09-19）：1 分待たせるとやめてしまうので、ボタンですぐ解けるように。一覧から始め直しても待たない
-function waitCard(stage) {
-  var now = Date.now(), rest = S.idx.slice(S.i), at = Math.min.apply(null, rest.map(function (v) { return S.ready[v] || now; }));
-  var card = el("div", "card");
-  card.appendChild(el("div", "waitSub", "ミスした語 " + rest.length + " 語を もう一度"));
-  card.appendChild(el("div", "waitN", "あと " + Math.max(1, Math.ceil((at - now) / 1000)) + " 秒"));
-  var go = el("button", "waitGo", "もう一度");
-  go.onclick = function () { S.idx.slice(S.i).forEach(function (v) { delete S.ready[v]; }); render(); };
-  card.appendChild(go);
-  card.appendChild(el("div", "waitSub", "待つと自動で出る。一覧にもどっても、○ にするまで今日の分に残る"));
-  stage.appendChild(card);
-  S.flipped = false; setButtons();
-  var s0 = S;
-  S.timer = setTimeout(function () { if (S === s0 && $("swipe").style.display !== "none") render(); }, 1000);
+// 学習ステップを 1 つ進める（Anki と同じ）。L＝今の状態（学習中でなければ null）、rel＝今日より前から覚えている語（復習）か。
+// 返すのは次の状態 [次に出す時刻, ステップ, 再学習]。null＝今日の分を抜ける
+function stepNext(L, g, rel, now) {
+  if (!L) {
+    if (rel) return g === 1 ? [now + RELEARN_STEPS[0] * 60000, 0, 1] : null;   // 復習：もう一度 だけ再学習へ
+    L = [now, 0, 0];                                                           // 新しい語：ステップ 0 から
+  }
+  var st = L[2] ? RELEARN_STEPS : LEARN_STEPS, i = Math.min(L[1], st.length - 1), m;
+  if (g === 1) return [now + st[0] * 60000, 0, L[2]];
+  if (g === 2) {
+    m = i > 0 ? st[i] : st.length > 1 ? (st[0] + st[1]) / 2 : st[0] * 1.5;
+    return [now + m * 60000, i, L[2]];
+  }
+  if (g === 3 && i + 1 < st.length) return [now + st[i + 1] * 60000, i + 1, L[2]];
+  return null;
+}
+// ボタンの上に出す「次に出るまで」（Anki と同じ）。今日の分を抜けるときは FSRS の次の間隔（日）
+function ivLabel(g) {
+  var w = word(), v = S.idx[S.i], cur = fsrsAll()[w[5]], now = Date.now();
+  var nx = stepNext(S.lst[v] || null, g, !!cur, now);
+  if (nx) { var m = Math.round((nx[0] - now) / 60000); return m < 60 ? m + "分" : Math.round(m / 60) + "時間"; }
+  var today = todayIso(), s;
+  if (cur && cur[2] === today) s = cur[0];                                      // 今日もう評価した語（2 回目以降は FSRS を変えない）
+  else s = fsrsNext(cur ? [cur[0], cur[1]] : null, g, cur ? days(cur[2], today) : 0)[0];
+  var d = Math.max(1, Math.round(s));
+  return d < 30 ? d + "日" : d < 365 ? (Math.round(d / 3) / 10) + "か月" : (Math.round(d / 36.5) / 10) + "年";
 }
 // 英単語の読み上げ（端末の音声。ボタンを押したときだけ）
 function canSpeak() { return "speechSynthesis" in window && "SpeechSynthesisUtterance" in window; }
@@ -688,40 +729,41 @@ function tint(card, r) {
   card.querySelector(".gng").style.opacity = r < 0 ? a : 0; card.querySelector(".gok").style.opacity = r > 0 ? a : 0;
   card.querySelector(".mng").style.opacity = r < 0 ? a : 0; card.querySelector(".mok").style.opacity = r > 0 ? a : 0;
 }
-function decide(miss, dir) {
+function decide(g, dir) {
   if (busy || !S.flipped || S.i >= S.idx.length) return; busy = true;
-  var now = Date.now(), w = word();
-  S.res[S.i] = miss; S.times[S.i] = [S.flipAt ? S.flipAt - S.shownAt : 0, now - S.shownAt];
-  S.fs[S.i] = PERIOD ? fsrsRate(w[5], !miss) : null;
+  var now = Date.now(), w = word(), v = S.idx[S.i], cur = fsrsAll()[w[5]];
+  S.res[S.i] = g === 1; S.gr[S.i] = g; S.times[S.i] = [S.flipAt ? S.flipAt - S.shownAt : 0, now - S.shownAt];
+  S.fs[S.i] = PERIOD ? fsrsRate(w[5], g) : null;
   if (PERIOD) {
-    cntAdd(S.book.b, 1);                                                // ✕は最後に回す。戻すときのために前の「残り」を覚える
-    S.pp[S.i] = pendAll()[w[5]] || 0; setPend(w[5], miss ? now : 0);
-    if (miss) {                                                         // RELEARN_GAP 語あとに入れ直し、RELEARN_MS までは出さない
-      var v = S.idx[S.i];
-      S.idx.splice(Math.min(S.i + 1 + RELEARN_GAP, S.idx.length), 0, v);
-      S.pr[S.i] = S.ready[v]; S.ready[v] = now + RELEARN_MS;
-    }
+    cntAdd(S.book.b, 1);                                                // 戻すときのために前の「残り」と学習の状態を覚える
+    S.pp[S.i] = pendAll()[w[5]] || 0; S.pl[S.i] = S.lst[v];
+    var nx = stepNext(S.lst[v] || null, g, !!cur, now);
+    setPend(w[5], nx || 0);
+    S.pu[S.i] = !!nx;
+    if (nx) { S.lst[v] = nx; S.idx.push(v); }                          // 学習中：後ろに入れ直す（出す順は pickNext が時刻で決める）
+    else delete S.lst[v];
   }
   var card = $("stage").querySelector(".card"); tint(card, dir); card.style.transition = "transform .22s ease-in";
   card.style.transform = "translateX(" + (dir * 520) + "px) rotate(" + (dir * 24) + "deg)";
   setTimeout(function () { busy = false; S.i++; render(); }, 200);
 }
-$("bng").onclick = function () { decide(true, -1); };
-$("bok").onclick = function () { decide(false, 1); };
+$("bng").onclick = function () { decide(1, -1); };
+$("bok").onclick = function () { decide(3, 1); };
+[1, 2, 3, 4].forEach(function (g) { $("g" + g).onclick = function () { decide(g, g === 1 ? -1 : 1); }; });
 $("bundo").onclick = function () {
   if (S.i > S.sentN && !busy) {
     S.i--; fsrsUndo(S.fs[S.i]);
     if (PERIOD) {
-      var w = word();
+      var w = word(), v = S.idx[S.i];
       cntAdd(S.book.b, -1);
-      if (S.res[S.i]) {                                  // 入れ直した分を取り消す
-        var v = S.idx[S.i], j = S.idx.indexOf(v, S.i + 1);
+      if (S.pu[S.i]) {                                   // 入れ直した分を取り消す
+        var j = S.idx.indexOf(v, S.i + 1);
         if (j > 0) S.idx.splice(j, 1);
-        if (S.pr[S.i] === undefined) delete S.ready[v]; else S.ready[v] = S.pr[S.i];
       }
+      if (S.pl[S.i] === undefined) delete S.lst[v]; else S.lst[v] = S.pl[S.i];
       setPend(w[5], S.pp[S.i]);
     }
-    S.res.length = S.fs.length = S.times.length = S.i; S.undo++; render();
+    S.res.length = S.gr.length = S.fs.length = S.times.length = S.i; S.undo++; render();
   }
 };
 
@@ -733,7 +775,7 @@ function showScore() {
   if (PERIOD) {
     var fr = firstRes(), ok1 = fr.filter(function (x) { return !S.res[x[1]]; }).length;
     $("score").textContent = "○ " + ok1; $("outof").textContent = "/ " + S.deck.length;
-    $("resSub").textContent = ok1 === S.deck.length ? "全部 1 回で ○" : "1 回目の ○。ミスした " + (S.deck.length - ok1) + " 語も全部 ○ にした";
+    $("resSub").textContent = ok1 === S.deck.length ? "全部 1 回で ○" : "1 回目の ○。もう一度 にした " + (S.deck.length - ok1) + " 語も全部 覚え直した";
     return;
   }
   var n = S.idx.length, ok = S.res.filter(function (x) { return x === false; }).length;
@@ -744,7 +786,7 @@ function finish() {
   screen("review"); $("count").textContent = "結果"; showScore(); refreshAgain();
   $("againAll").style.display = PERIOD ? "block" : "none";
   $("toHub").textContent = PERIOD ? "一覧にもどる" : "送信して終わる";
-  $("listLead").textContent = PERIOD ? "赤＝1 回目でミスした語（あとで ○ にしたので今日の分は終わり）。押しまちがいは回の途中の ↶ で直す" : "ミスした語は赤。押しまちがいはタップで直せる";
+  $("listLead").textContent = PERIOD ? "赤＝1 回目で もう一度 にした語（あとで学習ステップを抜けたので今日の分は終わり）。押しまちがいは回の途中の ↶ で直す" : "ミスした語は赤。押しまちがいはタップで直せる";
   var list = $("list"); list.innerHTML = "";
   if (PERIOD) {
     firstRes().forEach(function (x) {
@@ -762,7 +804,7 @@ function finish() {
     b.onclick = function () {
       S.res[k] = !S.res[k]; b.classList.toggle("on", S.res[k]);
       // 押しまちがいを直したら FSRS も直す（その日の最初の 1 回だったときだけ効いている）
-      if (S.fs[k]) { fsrsUndo(S.fs[k]); S.fs[k] = fsrsRate(w[5], !S.res[k]); }
+      if (S.fs[k]) { fsrsUndo(S.fs[k]); S.fs[k] = fsrsRate(w[5], S.res[k] ? 1 : 3); }
       showScore(); refreshAgain();
     };
     list.appendChild(b);
@@ -896,9 +938,10 @@ function commit() {
   var body;
   if (PERIOD) {
     if (S.i <= S.sentN) { if (S.i >= S.idx.length) S.sent = true; return; }
-    // 1 語ごと [行番号, ○=1/✕=0, 裏返すまでの ms, 決めるまでの ms]。同じ語が何回も出る（✕を後ろに回すので）
+    // 1 語ごと [行番号, ○=1/✕=0, 裏返すまでの ms, 決めるまでの ms, 評価 1〜4]。同じ語が何回も出る（学習ステップで後ろに回すので）
+    // ○✕ は もう一度＝✕・それ以外＝○（前からの読み手のため）。評価は 2026-10-10〜
     var items = [];
-    for (var k = S.sentN; k < S.i; k++) { var w = S.deck[S.idx[k]]; items.push([w[5], S.res[k] ? 0 : 1, S.times[k] ? S.times[k][0] : 0, S.times[k] ? S.times[k][1] : 0]); }
+    for (var k = S.sentN; k < S.i; k++) { var w = S.deck[S.idx[k]]; items.push([w[5], S.res[k] ? 0 : 1, S.times[k] ? S.times[k][0] : 0, S.times[k] ? S.times[k][1] : 0, S.gr[k] || (S.res[k] ? 1 : 3)]); }
     body = { v: 2, p: SID, id: S.id + (S.part ? "-" + S.part : ""), day: KIND[S.kind], b: S.book.b, round: S.round, mode: "fsrs", started: S.started, ended: Date.now(), undo: S.undo,
              items: items };
     S.sentN = S.i; S.part++;
