@@ -267,7 +267,7 @@ function show(text) { screen("msg"); $("msg").textContent = text; }
 function store(k, v) { try { if (v === undefined) return JSON.parse(localStorage.getItem(k) || "null"); localStorage.setItem(k, JSON.stringify(v)); } catch (e) { return null; } }
 function rid() { var a = new Uint8Array(9); crypto.getRandomValues(a); return Array.prototype.map.call(a, function (x) { return ("0" + x.toString(36)).slice(-2); }).join("").slice(0, 16); }
 function iso(d) { return d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).slice(-2) + "-" + ("0" + d.getDate()).slice(-2); }
-function todayIso() { return iso(new Date()); }
+function todayIso() { return wcToday(); }   // 1 日の切り替わりは朝 3 時（left.js）
 function days(a, b) { return Math.round((new Date(b + "T00:00:00") - new Date(a + "T00:00:00")) / 86400000); }
 function md(s) { var d = new Date(s + "T00:00:00"); return (d.getMonth() + 1) + "/" + d.getDate() + "（" + WD[d.getDay()] + "）"; }
 function shuffle(a) { for (var j = a.length - 1; j > 0; j--) { var r = Math.floor(Math.random() * (j + 1)), t = a[j]; a[j] = a[r]; a[r] = t; } return a; }
@@ -335,9 +335,23 @@ function dueCards(b) {
 function testRows(bk) { return bk.tn != null ? bk.words.slice(bk.words.length - bk.tn).map(function (w) { return w[5]; }) : bk.words.map(function (w) { return w[5]; }); }
 function testSet(bk) { var m = {}; testRows(bk).forEach(function (r) { m[r] = 1; }); return m; }
 function phaseToday() { return wcPhase(P.handout, P.test, todayIso()); }
-// 本人決定（2026-09-17）：全部 ○ にするまで終わらない。途中でやめたら、今日最後が ✕ の語は今日の分に残る
-function pendKey() { return "pend:" + ME + ":" + todayIso(); }
-function pendAll() { return store(pendKey()) || {}; }
+// 本人決定（2026-09-17）：全部 ○ にするまで終わらない。途中でやめたら、学習ステップの途中の語は今日の分に残る
+// 本人決定（2026-10-10）：その日に終わらなかった語は翌日に積む（前の版は日付ごとに分けていて、翌日には消えていた）
+function pendKey() { return "pend:" + ME; }
+function pendAll() {
+  var p = store(pendKey());
+  if (p) return p;
+  p = {};                                                // 前の版の日付ごとの置き場をまとめる（前日と今日のぶんだけ。古い日のは捨てる）
+  try {
+    var y = iso(new Date(new Date(todayIso() + "T00:00:00").getTime() - 86400000));
+    Object.keys(localStorage).filter(function (k) { return k.indexOf(pendKey() + ":") === 0; }).sort().forEach(function (k) {
+      if (k.slice(-10) >= y) { var o = store(k) || {}; Object.keys(o).forEach(function (r) { p[r] = o[r]; }); }
+      localStorage.removeItem(k);
+    });
+  } catch (e) {}
+  store(pendKey(), p);
+  return p;
+}
 // 値は学習ステップの状態 [次に出す時刻, ステップの番号, 再学習なら 1]（前の版は ✕ にした時刻か 1。pendState で読み替える）
 function pendState(v) { return Array.isArray(v) ? v : [0, 0, 0]; }
 function setPend(row, v) { if (!row) return; var p = pendAll(); if (v) p[row] = v; else delete p[row]; store(pendKey(), p); }
@@ -357,7 +371,7 @@ function todayPlan(bk) {
     // 毎日 daily 語ずつの単語帳は番号順に今日の分を決める（出す順番はランダム）
     pl = { rows: bk.daily && P.handout
       ? shuffle(wcDailyRows({ rows: bk.words.map(function (w) { return w[5]; }), t: testRows(bk), daily: bk.daily, rest: bk.rest }, all, P.handout, todayIso()))
-      : ph.kind === "final" ? [] : shuffle(unseen).slice(0, wcFreshCount(unseen.length, ph)) };
+      : ph.kind === "final" ? [] : shuffle(unseen).slice(0, wcFreshCount(unseen.length, ph, bk.words.length)) };
     if (sig) pl.sig = sig;
     store(key, pl);
   }

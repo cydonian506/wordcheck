@@ -5,24 +5,33 @@
 //   - 後半：FSRS の期限の語だけ（出遅れてまだやっていない語があれば全部出す）
 //   - テストの前日（と当日）：テスト範囲を全部 1 周（今日もうやった語は除く）＋期限の語
 // snapshot = { handout, test, books: [{b, label, rows, t, daily}], bookOf: {行番号: b},
-//              fsrs: {行番号: [安定度, 難易度, 最後の日]}, plans: {b: {date, rows}}, pend: [今日最後が ✕ の行番号], url }
+//              fsrs: {行番号: [安定度, 難易度, 最後の日]}, plans: {b: {date, rows}}, pend: [学習ステップの途中の行番号（前の日のぶんも）], url }
 //   t はテスト範囲（次週）の行番号。古いデータで無ければ rows 全部を使う
 var WC_REVIEW_MAX = 100, WC_FINAL_REVIEW_MAX = 50, WC_INTRO_RATIO = 0.5;   // 前日は範囲の 1 周が主なので期限の語を絞る
+// 本人決定（2026-10-10）：1 日の切り替わりは朝 3 時（夜中の 0〜3 時は前の日のぶん）
+var WC_DAY_START_H = 3;
+function wcDayOf(ms) { return wcIso(new Date(ms - WC_DAY_START_H * 3600000)); }
+function wcToday() { return wcDayOf(Date.now()); }
 function wcIso(d) { return d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).slice(-2) + "-" + ("0" + d.getDate()).slice(-2); }
 function wcDays(a, b) { return Math.round((new Date(b + "T00:00:00") - new Date(a + "T00:00:00")) / 86400000); }
 
-// 今日が期間のどこか。{kind: "intro"|"review"|"final", left: 前半の残り日数（今日を含む）}
+// 今日が期間のどこか。{kind: "intro"|"review"|"final", left: 前半の残り日数（今日を含む）, intro: 前半の日数}
 function wcPhase(handout, test, today) {
   if (wcDays(today, test) <= 1) return { kind: "final", left: 0 };
-  if (!handout) return { kind: "intro", left: wcDays(today, test) - 1 };   // 古いデータ：前日まで均等
+  if (!handout) return { kind: "intro", left: wcDays(today, test) - 1, intro: 0 };   // 古いデータ：前日まで均等
   var hw = Math.max(1, wcDays(handout, test) - 1);                         // 宿題の日数
   var intro = Math.max(1, Math.min(hw - 1, Math.ceil(hw * WC_INTRO_RATIO)));
   var left = intro - Math.max(1, wcDays(handout, today)) + 1;              // 渡した日にやった分は 1 日目に数える
-  return left >= 1 ? { kind: "intro", left: left } : { kind: "review", left: 0 };
+  return left >= 1 ? { kind: "intro", left: left, intro: intro } : { kind: "review", left: 0 };
 }
-// 今日出す新しい語の数（final では使わない）
-function wcFreshCount(unseen, phase) {
-  return phase.kind === "intro" ? Math.ceil(unseen / Math.max(1, phase.left)) : unseen;
+// 今日出す新しい語の数（final では使わない）。total＝範囲の語数
+// 本人決定（2026-10-10）：やり残しは翌日に積む。今日までに出し終える数（範囲×経過日数÷前半の日数）からやった語を引く
+// （前の版は 残り÷残り日数 で、やり残しが後ろの日に薄く散っていた）
+function wcFreshCount(unseen, phase, total) {
+  if (phase.kind !== "intro") return unseen;
+  if (!phase.intro || total == null) return Math.ceil(unseen / Math.max(1, phase.left));
+  var k = phase.intro - phase.left + 1;                                     // 前半の何日目か
+  return Math.max(0, Math.min(unseen, Math.ceil(total * k / phase.intro) - (total - unseen)));
 }
 // 期限が来ているか
 function wcDue(st, today) { return st[2] !== today && wcDays(st[2], today) >= Math.max(1, Math.round(st[0])); }
@@ -68,12 +77,13 @@ function wcDailyRows(bk, fsrs, handout, today) {
 }
 
 function wcLeft(snap, today) {
-  today = today || wcIso(new Date());
+  today = today || wcToday();
   var fsrs = snap.fsrs || {}, out = [], phase = wcPhase(snap.handout, snap.test, today);
   (snap.books || []).forEach(function (bk) {
-    var n;
+    var n, inFin = null;
     if (phase.kind === "final" && !bk.daily) {   // 毎日足す単語帳は前日も足す（総復習にしない）
-      var fin = wcFinalRows(bk, fsrs, today), inFin = {};
+      var fin = wcFinalRows(bk, fsrs, today);
+      inFin = {};
       fin.forEach(function (r) { inFin[r] = 1; });
       var due = 0;
       Object.keys(fsrs).forEach(function (row) { if (snap.bookOf[row] === bk.b && !inFin[row] && wcDue(fsrs[row], today)) due++; });
@@ -84,11 +94,14 @@ function wcLeft(snap, today) {
       var plan = (snap.plans || {})[bk.b], fresh;
       if (plan && plan.date === today) fresh = plan.rows.filter(function (r) { return !fsrs[r]; }).length;
       else if (bk.daily && snap.handout) fresh = wcDailyRows(bk, fsrs, snap.handout, today).length;
-      else fresh = wcFreshCount(bk.rows.filter(function (r) { return !fsrs[r]; }).length, phase);
+      else fresh = wcFreshCount(bk.rows.filter(function (r) { return !fsrs[r]; }).length, phase, bk.rows.length);
       n = Math.min(d, WC_REVIEW_MAX) + fresh;
     }
-    // 今日 ✕ のまま終わった語（全部 ○ にするまで残る。今日やった語なので上の数には入っていない）
-    n += (snap.pend || []).filter(function (r) { return snap.bookOf[r] === bk.b; }).length;
+    // 学習ステップの途中で終わった語（抜けるまで残る。前の日のぶんも翌日に積む。期限の語・前日の 1 周と重なる語は上で数えた）
+    n += (snap.pend || []).filter(function (r) {
+      var st = fsrs[r];
+      return snap.bookOf[r] === bk.b && !(st && wcDue(st, today)) && !(inFin && inFin[r]);
+    }).length;
     out.push({ b: bk.b, label: bk.label, n: n });
   });
   return out;

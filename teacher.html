@@ -217,7 +217,7 @@ function refresh() {
 // ================================================================ 集計
 var KINDS = ["今日の分", "もっとやる", "ミスだけ", "もう一周", "苦手語", "テスト範囲"], OPEN_RUNS = {};
 function render(dayList) {
-  var today = iso(new Date()), main = $("main"), opened = {};
+  var today = wcToday(), main = $("main"), opened = {};
   [].forEach.call(document.querySelectorAll(".st.open"), function (d) { opened[d.dataset.c] = 1; });
   main.innerHTML = "";
   var byCode = {};
@@ -253,7 +253,7 @@ function runs(sessions) {
     });
     r.n = order.length; r.ok1 = order.filter(function (x) { return first[x]; }).length;
     r.miss = miss; r.missRows = order.filter(function (x) { return miss[x]; }).sort(function (a, b) { return miss[b] - miss[a]; });
-    r.d = iso(new Date(r.ended || r.started));
+    r.d = wcDayOf(r.ended || r.started);
   });
   return out.sort(function (a, b) { return (a.ended || 0) - (b.ended || 0); });
 }
@@ -266,7 +266,7 @@ function quotaOf(c, sessions, today) {
   if (!cur) return null;
   var st = {}, last = {}, doneToday = {}, recs = [];
   sessions.forEach(function (s) {
-    var d = iso(new Date(s.ended || s.started));
+    var d = wcDayOf(s.ended || s.started);
     s.items.forEach(function (it) { recs.push({ d: d, row: String(it[0]), b: s.b, ok: !!it[1], g: gradeOf(it) }); });
   });
   recs.forEach(function (r) {
@@ -306,7 +306,7 @@ function quotaParts(q) {
   });
 }
 function whenLabel(ms, today) {
-  var d = iso(new Date(ms)), t = hm(ms).split(" ")[1], k = days(d, today);
+  var d = wcDayOf(ms), t = hm(ms).split(" ")[1], k = days(d, today);
   return (k === 0 ? "今日 " : k === 1 ? "昨日 " : hm(ms).split(" ")[0] + " ") + t;
 }
 function runTitle(r) { return (r.b === "k" ? "古文" : "英") + "・" + (KINDS[r.day] || "") + (r.round > 1 ? "・" + r.round + "周目" : ""); }
@@ -338,13 +338,13 @@ function overview(ses, today) {
     var tr = el("tr"), nm = el("td"), cnt = {}, s = ses[c], lastS = s[s.length - 1];
     // 日ごとの回答数は単語帳ごとに分けて持つ（cnt[日] = {e: 英, k: 古文}）
     s.forEach(function (x) {
-      var d = iso(new Date(x.ended || x.started));
+      var d = wcDayOf(x.ended || x.started);
       cnt[d] = cnt[d] || { e: 0, k: 0 };
       cnt[d][x.b === "k" ? "k" : "e"] += x.items.length;
     });
     nm.appendChild(el("span", "on", NAMES[c]));
     var lt = lastS ? lastS.ended || lastS.started : 0;
-    nm.appendChild(el("span", "ol" + (!lt || days(iso(new Date(lt)), today) >= 2 ? " stale" : ""), lt ? whenLabel(lt, today) : "記録なし"));
+    nm.appendChild(el("span", "ol" + (!lt || days(wcDayOf(lt), today) >= 2 ? " stale" : ""), lt ? whenLabel(lt, today) : "記録なし"));
     var q = quotaOf(c, s, today);
     // 名前の列は狭いので単語帳ごとに 1 行ずつ（「英 30/121」「古文 8/27」）
     if (q) q.order.forEach(function (b) {
@@ -427,7 +427,7 @@ function studentBlock(c, sessions, today, open) {
   // 1 回答ずつ（時刻順）と、FSRS の計算し直し
   var recs = [];
   sessions.forEach(function (s) {
-    var d = iso(new Date(s.ended || s.started));
+    var d = wcDayOf(s.ended || s.started);
     s.items.forEach(function (it) { recs.push({ d: d, row: String(it[0]), ok: !!it[1], b: s.b, g: gradeOf(it) }); });
   });
   var st = {}, last = {}, first = {}, firsts = [];
