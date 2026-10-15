@@ -108,6 +108,9 @@ table.days tr.today td:first-child{font-weight:700}
 .weak button.w .x{font-size:11px;color:var(--ng)}
 #stats .go{display:block;width:100%;margin-top:10px;border:0;border-radius:10px;padding:12px;font-size:15px;font-weight:700;background:var(--acc);color:#fff}
 .book .more{display:block;width:100%;margin-top:8px;border:1px solid var(--line);border-radius:10px;padding:11px;font-size:15px;font-weight:600;background:var(--card)}
+.book .sub{display:flex;gap:8px}
+.book .sub .more{flex:1;min-width:0}
+.book .more.done{color:var(--sub)}
 
 /* カード */
 #swipe{display:none;flex-direction:column;align-items:center;padding:8px 18px 24px;position:relative;overflow:hidden;touch-action:none}
@@ -250,7 +253,7 @@ var SHOW_IV = false;
 // 表＝例文（覚える部分をハイライト）、裏＝訳（該当部分をハイライト）。例文が無い語は今までどおり
 var EX_MIN = 3;
 // 送る記録の day 欄に入れる周の種類（Apps Script を出し直さずに済むよう mode は fsrs のまま）
-var KIND = { today: 0, more: 1, miss: 2, again: 3, weak: 4, test: 5 };
+var KIND = { today: 0, more: 1, miss: 2, again: 3, weak: 4, test: 5, "new": 6, review: 7 };
 var P = null, S = null, busy = false, INDEX = {}, BOOK = {};   // INDEX：行番号 → [0, 単語, 訳, 品詞, 単語帳の番号, 行番号, 例文, 例文の訳, 例文の該当部分, 訳の該当部分]、BOOK：行番号 → "e"/"k"
 var $ = function (id) { return document.getElementById(id); };
 function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
@@ -379,6 +382,16 @@ function todayPlan(bk) {
 }
 function newToday(bk) { var all = fsrsAll(); return todayPlan(bk).rows.filter(function (r) { return !all[r] && INDEX[r]; }).map(function (r) { return INDEX[r]; }); }
 function todayDeck(bk) { return withPend(bk, baseDeck(bk)); }
+// 本人希望（2026-10-15）：今日の分を「新規」と「復習」のサブデッキにも分けて回せるように（まとめては今日の分のまま）。
+// 新規＝まだ一度もやっていない語と、新しい語の学習ステップの途中の語。復習＝それ以外（期限の語・忘れて再学習中の語・前日の 1 周の既習語）
+function splitDeck(bk) {
+  var all = fsrsAll(), pd = pendAll(), out = { fresh: [], rev: [] };
+  todayDeck(bk).forEach(function (w) {
+    var v = pd[w[5]], isNew = v ? !pendState(v)[2] : !all[w[5]];
+    (isNew ? out.fresh : out.rev).push(w);
+  });
+  return out;
+}
 function baseDeck(bk) {
   if (phaseToday().kind !== "final" || bk.daily) return dueCards(bk.b).concat(newToday(bk));   // 毎日足す単語帳は前日も足す
   var fin = wcFinalRows({ rows: bk.words.map(function (w) { return w[5]; }), t: testRows(bk) }, fsrsAll(), todayIso()), inFin = {};
@@ -436,6 +449,14 @@ function hub() {
     var go = el("button", "go" + (deck.length ? "" : " done"), deck.length ? "今日の分　" + deck.length + " 語" : "今日の分は終わり");
     if (deck.length) go.onclick = function () { begin(bk, "today", todayDeck(bk), 1); };
     card.appendChild(go);
+    var sp = splitDeck(bk), sub = el("div", "sub");
+    [["new", "新規", sp.fresh.length, "fresh"], ["review", "復習", sp.rev.length, "rev"]].forEach(function (x) {
+      var b = el("button", "more" + (x[2] ? "" : " done"), x[1] + "　" + x[2] + " 語");
+      b.disabled = !x[2];
+      b.onclick = function () { var d = splitDeck(bk)[x[3]]; if (x[0] === "new") shuffle(d); begin(bk, x[0], d, 1); };
+      sub.appendChild(b);
+    });
+    card.appendChild(sub);
     var more = el("button", "more", "もっとやる");
     more.onclick = function () { begin(bk, "more", moreDeck(bk), 1); };
     card.appendChild(more);
@@ -602,7 +623,7 @@ function begin(bk, kind, deck, round) {
   if (PERIOD) { var pd = pendAll(); deck.forEach(function (w, k) { if (pd[w[5]]) S.lst[k] = pendState(pd[w[5]]); }); }
   $("swipe").classList.toggle("anki", !!PERIOD);
   $("hintL").textContent = PERIOD ? "← もう一度" : "← ミス"; $("hintR").textContent = PERIOD ? "正解 →" : "覚えてた →";
-  var names = { today: "今日の分", more: "もっとやる", miss: "ミスだけ", again: "もう一周", weak: "苦手語", test: "テスト範囲" };
+  var names = { today: "今日の分", more: "もっとやる", miss: "ミスだけ", again: "もう一周", weak: "苦手語", test: "テスト範囲", "new": "今日の分・新規", review: "今日の分・復習" };
   $("title").textContent = (bk.label || "") + "　" + names[kind] + (round > 1 ? "　" + round + "周目" : "");
   screen("swipe"); render();
 }

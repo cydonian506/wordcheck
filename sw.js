@@ -40,7 +40,7 @@ self.addEventListener("push", function (e) {
     // 講師への通知：生徒が回を終えた（氏名は端末の対応表から）
     e.waitUntil(readTeacher().then(function (tc) {
       var name = (tc && tc.names && tc.names[msg.c]) || "生徒 " + msg.c;
-      var kinds = ["今日の分", "もっとやる", "ミスだけ", "もう一周", "苦手語"];
+      var kinds = ["今日の分", "もっとやる", "ミスだけ", "もう一周", "苦手語", "テスト範囲", "今日の分・新規", "今日の分・復習"];
       var body = (msg.b === "k" ? "古文" : "英") + "・" + (kinds[msg.k] || "") + "　" + msg.n + " 回答（○ " + msg.ok + "）";
       return self.registration.showNotification(name + " が単語チェック", {
         body: body, tag: "rec-" + msg.c, data: { url: tc && tc.url }
