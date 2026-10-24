@@ -105,6 +105,33 @@ tr.miss td{color:var(--ng)}
 .ov .dk{color:var(--sub)}
 .ov .de.z,.ov .dk.z{color:#c8c8d0}
 .ov td.t .de,.ov td.t .dk{font-weight:700}
+/* 日別の処理数：日付タブ＋生徒×（処理・復習・新規） */
+.ov .h2b{margin-top:18px;padding-top:12px;border-top:1px solid var(--line)}
+.dtabs{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;margin:8px 0 6px}
+.dtab{border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:5px 0;display:flex;flex-direction:column;align-items:center;line-height:1.25;font-variant-numeric:tabular-nums}
+.dtab .dd{font-size:13px;font-weight:700}
+.dtab .dw{font-size:10px;color:var(--sub)}
+.dtab .ds{font-size:12px;font-weight:600;margin-top:2px}
+.dtab .ds.z{color:#c8c8d0}
+.dtab.sel{background:var(--acc);border-color:var(--acc);color:#fff}
+.dtab.sel .dw{color:#fff}
+.ov table.dt col.n{width:37%}.ov table.dt col.v{width:21%}
+.ov table.dt th{font-size:12px;padding:6px 2px}
+.ov table.dt th.h1{color:var(--ink)}
+.ov table.dt th.h2{color:var(--acc)}
+.ov table.dt th.h3{color:var(--ok)}
+.ov table.dt td{vertical-align:top;padding:8px 2px}
+.ov table.dt td b{display:block;font-size:22px;line-height:1.15;font-variant-numeric:tabular-nums}
+.ov table.dt td.v1 b{font-weight:800}
+.ov table.dt td.v2 b{color:var(--acc);font-weight:600}
+.ov table.dt td.v3 b{color:var(--ok);font-weight:600}
+.ov table.dt td b.z{color:#c8c8d0;font-weight:400}
+.ov table.dt td .sp{display:block;font-size:11px;color:var(--sub);white-space:pre-line;line-height:1.35}
+.ov table.dt tr.none .on{color:var(--sub)}
+.ov table.dt tr.tot td{border-bottom:0;border-top:2px solid var(--ink);font-weight:700;vertical-align:middle}
+.ov table.wk7 th{cursor:pointer}
+.ov table.wk7 th.t{background:var(--acc);color:#fff;border-radius:6px}
+.ov td.nm7{font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sh .today.ok{color:var(--ok)}
 .sh .today.ng{color:var(--warn)}
 .ov td.z{color:#c8c8d0}
@@ -340,10 +367,93 @@ function whenLabel(ms, today) {
   return (k === 0 ? "今日 " : k === 1 ? "昨日 " : hm(ms).split(" ")[0] + " ") + t;
 }
 function runTitle(r) { return (r.b === "k" ? "古文" : "英") + "・" + (KINDS[r.day] || "") + (r.round > 1 ? "・" + r.round + "周目" : ""); }
+// 日ごとの処理数（2026-10-24 本人「その日に処理した総数・復習・新規がわかるように」）
+// 処理＝その日に答えた語（同じ語は 1 回）、新規＝その日が初めての語、復習＝処理−新規
+function dayStats(sessions) {
+  var seen = {}, per = {}, res = {};
+  sessions.forEach(function (s) {
+    var d = wcDayOf(s.ended || s.started), b = s.b === "k" ? "k" : "e";
+    per[d] = per[d] || { e: {}, k: {} };
+    s.items.forEach(function (it) {
+      var key = String(it[0]);
+      if (key in per[d][b]) return;
+      per[d][b][key] = !(b + ":" + key in seen); seen[b + ":" + key] = 1;
+    });
+  });
+  Object.keys(per).forEach(function (d) {
+    var r = res[d] = { n: 0, nw: 0, e: { n: 0, nw: 0 }, k: { n: 0, nw: 0 } };
+    ["e", "k"].forEach(function (b) {
+      Object.keys(per[d][b]).forEach(function (key) { r.n++; r[b].n++; if (per[d][b][key]) { r.nw++; r[b].nw++; } });
+    });
+  });
+  return res;
+}
+var ZERO = { n: 0, nw: 0, e: { n: 0, nw: 0 }, k: { n: 0, nw: 0 } };
+// 英・古文の内訳（片方だけなら片方）
+function splitText(x, f) {
+  var a = [];
+  if (x.e.n) a.push("英 " + f(x.e)); if (x.k.n) a.push("古 " + f(x.k));
+  return a.join("\n");
+}
+var SEL_DAY = null;
 function overview(ses, today) {
-  var box = el("div", "ov"), d7 = [];
+  var box = el("div", "ov"), d7 = [], stats = {};
   for (var i = 6; i >= 0; i--) d7.push(addDays(today, -i));
-  box.appendChild(el("h2", null, "直近 7 日"));
+  if (!SEL_DAY || d7.indexOf(SEL_DAY) < 0) SEL_DAY = today;
+  ORDER.forEach(function (c) { stats[c] = dayStats(ses[c]); });
+  var sel = SEL_DAY;
+  box.appendChild(el("h2", null, "日別の処理数"));
+  // 日付の切り替え（下に全員の処理数の合計）
+  var tabs = el("div", "dtabs");
+  d7.forEach(function (d) {
+    var dt = new Date(d + "T00:00:00"), sum = 0;
+    ORDER.forEach(function (c) { sum += (stats[c][d] || ZERO).n; });
+    var b = el("button", "dtab" + (d === sel ? " sel" : "") + (d === today ? " t" : ""));
+    b.appendChild(el("span", "dd", (d === today ? "今日" : dt.getDate() + "")));
+    b.appendChild(el("span", "dw", d === today ? dt.getDate() + WD[dt.getDay()] : WD[dt.getDay()]));
+    b.appendChild(el("span", "ds" + (sum ? "" : " z"), sum ? String(sum) : "—"));
+    b.onclick = function () { SEL_DAY = d; var nb = overview(ses, today); box.parentNode.replaceChild(nb, box); };
+    tabs.appendChild(b);
+  });
+  box.appendChild(tabs);
+  var tb = el("table", "dt"), cg = el("colgroup"), hr = el("tr");
+  ["n", "v", "v", "v"].forEach(function (x) { cg.appendChild(el("col", x)); });
+  tb.appendChild(cg);
+  [md(sel), "処理", "復習", "新規"].forEach(function (x, j) { hr.appendChild(el("th", j ? "h" + j : null, x)); });
+  tb.appendChild(hr);
+  var tot = { n: 0, nw: 0 };
+  ORDER.forEach(function (c) {
+    var x = stats[c][sel] || ZERO, s = ses[c], lastS = s[s.length - 1], tr = el("tr", x.n ? null : "none"), nm = el("td");
+    tot.n += x.n; tot.nw += x.nw;
+    nm.appendChild(el("span", "on", NAMES[c]));
+    var lt = lastS ? lastS.ended || lastS.started : 0;
+    nm.appendChild(el("span", "ol" + (!lt || days(wcDayOf(lt), today) >= 2 ? " stale" : ""), "最後 " + (lt ? whenLabel(lt, today) : "記録なし")));
+    if (sel === today) {
+      var q = quotaOf(c, s, today);
+      if (q && q.quota) nm.appendChild(el("span", "oq" + (q.done >= q.quota ? " ok" : " ng"), "ノルマ " + q.done + "/" + q.quota));
+    }
+    nm.onclick = function () {
+      var card = document.querySelector('.st[data-c="' + c + '"]');
+      if (!card) return;
+      card.classList.add("open"); card.querySelector(".arrow").textContent = "▲";
+      card.scrollIntoView({ behavior: "smooth", block: "start" });
+    };
+    tr.appendChild(nm);
+    [[x.n, function (y) { return y.n; }], [x.n - x.nw, function (y) { return y.n - y.nw; }], [x.nw, function (y) { return y.nw; }]].forEach(function (v, j) {
+      var td = el("td", "v" + (j + 1));
+      td.appendChild(el("b", v[0] ? null : "z", v[0] ? String(v[0]) : "0"));
+      if (v[0]) td.appendChild(el("span", "sp", splitText(x, v[1])));
+      tr.appendChild(td);
+    });
+    tb.appendChild(tr);
+  });
+  var ft = el("tr", "tot");
+  ft.appendChild(el("td", null, "合計"));
+  [tot.n, tot.n - tot.nw, tot.nw].forEach(function (v, j) { var td = el("td", "v" + (j + 1)); td.appendChild(el("b", null, String(v))); ft.appendChild(td); });
+  tb.appendChild(ft);
+  box.appendChild(tb);
+  box.appendChild(el("div", "note", "処理＝その日に答えた語の数（同じ語を何度答えても 1）。新規＝その日に初めて答えた語、復習＝前にも答えたことのある語。小さい字は英・古文の内訳。名前を押すとその生徒へ"));
+  box.appendChild(el("h2", "h2b", "直近 7 日"));
   // いちばん最近やった人
   var latest = null;
   ORDER.forEach(function (c) {
@@ -354,70 +464,44 @@ function overview(ses, today) {
     var lr = runs(ses[latest.c]).pop();
     box.appendChild(el("div", "lat", "最新：" + NAMES[latest.c] + "　" + whenLabel(latest.t, today) + "　" + runTitle(lr) + "　" + lr.ok1 + "/" + lr.n + " ○"));
   }
-  var tb = el("table"), cg = el("colgroup"), hr = el("tr");
+  tb = el("table", "wk7"); cg = el("colgroup"); hr = el("tr");
   cg.appendChild(el("col", "n")); d7.forEach(function () { cg.appendChild(el("col", "d")); });
   tb.appendChild(cg);
-  hr.appendChild(el("th", null, "最後にやった"));
+  hr.appendChild(el("th", null, ""));
   d7.forEach(function (d) {
-    var th = el("th", d === today ? "t" : null), dt = new Date(d + "T00:00:00");
+    var th = el("th", d === sel ? "t" : null), dt = new Date(d + "T00:00:00");
     th.appendChild(el("div", null, String(dt.getDate()))); th.appendChild(el("div", null, WD[dt.getDay()]));
+    th.onclick = function () { SEL_DAY = d; var nb = overview(ses, today); box.parentNode.replaceChild(nb, box); };
     hr.appendChild(th);
   });
   tb.appendChild(hr);
   ORDER.forEach(function (c) {
-    var tr = el("tr"), nm = el("td"), cnt = {}, s = ses[c], lastS = s[s.length - 1];
-    // 日ごとの回答数は単語帳ごとに分けて持つ（cnt[日] = {e: 英, k: 古文}）
-    s.forEach(function (x) {
-      var d = wcDayOf(x.ended || x.started);
-      cnt[d] = cnt[d] || { e: 0, k: 0 };
-      cnt[d][x.b === "k" ? "k" : "e"] += x.items.length;
-    });
-    nm.appendChild(el("span", "on", NAMES[c]));
-    var lt = lastS ? lastS.ended || lastS.started : 0;
-    nm.appendChild(el("span", "ol" + (!lt || days(wcDayOf(lt), today) >= 2 ? " stale" : ""), lt ? whenLabel(lt, today) : "記録なし"));
-    var q = quotaOf(c, s, today);
-    // 名前の列は狭いので単語帳ごとに 1 行ずつ（「英 30/121」「古文 8/27」）
-    if (q) q.order.forEach(function (b) {
-      var x = q.books[b];
-      nm.appendChild(el("span", "oq" + (x.quota ? x.done >= x.quota ? " ok" : " ng" : ""),
-        bookName(b) + " " + (x.quota ? x.done + "/" + x.quota : x.done + "・ノルマなし")));
-    });
-    nm.onclick = function () {
-      var card = document.querySelector('.st[data-c="' + c + '"]');
-      if (!card) return;
-      card.classList.add("open"); card.querySelector(".arrow").textContent = "▲";
-      card.scrollIntoView({ behavior: "smooth", block: "start" });
-    };
-    tr.appendChild(nm);
-    // 日ごとの升は上が英、下が古文
+    var tr = el("tr");
+    tr.appendChild(el("td", "nm7", NAMES[c]));
+    // 升は 処理数、下に新規
     d7.forEach(function (d) {
-      var x = cnt[d], td = el("td", x ? (d === today ? "t" : null) : "z");
+      var x = stats[c][d], td = el("td", x ? (d === sel ? "t" : null) : "z");
       if (!x) td.textContent = "—";
-      else {
-        td.appendChild(el("div", x.e ? "de" : "de z", x.e ? String(x.e) : "—"));
-        td.appendChild(el("div", x.k ? "dk" : "dk z", x.k ? String(x.k) : "—"));
-      }
+      else { td.appendChild(el("div", "de", String(x.n))); td.appendChild(el("div", "dk" + (x.nw ? "" : " z"), x.nw ? "新" + x.nw : "—")); }
       tr.appendChild(td);
     });
     tb.appendChild(tr);
   });
   box.appendChild(tb);
-  box.appendChild(el("div", "note", "升の上＝英・下＝古文の回答数（全周）。名前の下は今日のノルマ（やった語 / 今日の分）。赤い日付＝2 日以上やっていない。名前を押すとその生徒へ"));
+  box.appendChild(el("div", "note", "升の上＝処理数、下＝そのうち新規。上の日付を押すとその日の内訳"));
   return box;
 }
 // 生徒の直近 7 日：日ごとに回を並べ、押すと ✕ だった語
 function histBlock(c, sessions, W, today) {
-  var box = el("div", "hist"), rs = runs(sessions), byDay = {};
+  var box = el("div", "hist"), rs = runs(sessions), byDay = {}, ds = dayStats(sessions);
   box.appendChild(el("h4", null, "直近 7 日の回（押すと ✕ の語）"));
   rs.forEach(function (r) { (byDay[r.d] = byDay[r.d] || []).push(r); });
   for (var i = 0; i < 7; i++) {
-    var d = addDays(today, -i), list = (byDay[d] || []).slice().reverse();
-    var per = { e: 0, k: 0 };
-    list.forEach(function (r) { per[r.b === "k" ? "k" : "e"] += r.items.length; });
+    var d = addDays(today, -i), list = (byDay[d] || []).slice().reverse(), x = ds[d];
     var hd = el("div", "hd" + (!list.length && i > 0 ? " none" : ""));
     hd.appendChild(el("span", null, md(d)));
-    hd.appendChild(el("span", "hn", list.length
-      ? list.length + " 回・回答 英 " + per.e + "・古文 " + per.k
+    hd.appendChild(el("span", "hn", list.length && x
+      ? "処理 " + x.n + "（復習 " + (x.n - x.nw) + "・新規 " + x.nw + "）・" + list.length + " 回"
       : i === 0 ? "まだ" : "やっていない"));
     box.appendChild(hd);
     list.forEach(function (r) { box.appendChild(runRow(c, r, W)); });
@@ -551,23 +635,23 @@ function bookBlock(bk, p, W, st, last, first, firsts, recs, today, q) {
   firsts.forEach(function (r) {
     if (r.b !== bk.b) return;
     fst[r.d] = (fst[r.d] || 0) + 1; oks[r.d] = (oks[r.d] || 0) + (r.ok ? 1 : 0);
-    if (first[r.row] === r.d && inR[r.row]) nw[r.d] = (nw[r.d] || 0) + 1;
+    if (first[r.row] === r.d) nw[r.d] = (nw[r.d] || 0) + 1;
   });
   var tb = el("table"), cg = el("colgroup"), hr = el("tr");
   for (var ci = 0; ci < 6; ci++) cg.appendChild(el("col", "c" + ci));
   tb.appendChild(cg);
-  ["日", "", "回答", "語", "新", "○率"].forEach(function (x) { hr.appendChild(el("th", null, x)); });
+  ["日", "", "処理", "復習", "新規", "○率"].forEach(function (x) { hr.appendChild(el("th", null, x)); });
   tb.appendChild(hr);
   for (var d = p.handout; d < p.test; d = addDays(d, 1)) {
     var a = ans[d] || 0, cls = d === today ? "today" : d > today ? "future" : (d > p.handout && !a ? "miss" : "");
     var tr = el("tr", cls), tag = bk.daily ? (wcRest(bk, d) ? "復" : "新") : { intro: "新", review: "復", final: "総" }[wcPhase(p.handout, p.test, d).kind];
-    [md(d).replace("（", "(").replace("）", ")"), tag, a || "", fst[d] || "", nw[d] || "", fst[d] ? pct(oks[d] / fst[d]) : "—"].forEach(function (v, i) {
+    [md(d).replace("（", "(").replace("）", ")"), tag, fst[d] || "", fst[d] ? fst[d] - (nw[d] || 0) : "", nw[d] || "", fst[d] ? pct(oks[d] / fst[d]) : "—"].forEach(function (v, i) {
       tr.appendChild(el("td", i === 1 ? "tag" : null, String(v)));
     });
     tb.appendChild(tr);
   }
   node.appendChild(tb);
-  node.appendChild(el("div", "note", "新＝新しい語の期間／復＝復習／総＝前日の総復習。回答＝全周、語＝その日の 1 回目（FSRS に効く）、新＝初めての語。赤＝やっていない日"));
+  node.appendChild(el("div", "note", "2 列目 新＝新しい語の期間／復＝復習／総＝前日の総復習。処理＝その日に答えた語、新規＝初めての語、復習＝処理−新規、○率＝1 回目の ○。赤＝やっていない日"));
   // 苦手語
   var ng = {}, cnt = {};
   firsts.forEach(function (r) { if (r.b !== bk.b) return; cnt[r.row] = (cnt[r.row] || 0) + 1; if (!r.ok) ng[r.row] = (ng[r.row] || 0) + 1; });
