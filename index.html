@@ -86,6 +86,15 @@ header{padding:calc(12px + env(safe-area-inset-top)) 18px 6px}
 .book .lbar>div{height:100%;background:var(--ok)}
 .book .go{display:block;width:100%;margin-top:12px;border:0;border-radius:10px;padding:14px;font-size:17px;font-weight:700;background:var(--acc);color:#fff}
 .book .go.done{background:var(--bg);color:var(--sub);border:1px solid var(--line)}
+/* 不具合を先生に送る（本人希望 2026-10-24） */
+#fbLink{display:block;width:100%;margin:4px 0 0;padding:10px;border:0;background:transparent;color:var(--sub);font-size:13px;text-decoration:underline}
+#fb{display:none;padding:8px 18px 40px}
+#fb label{display:flex;gap:10px;align-items:center;padding:10px 0;font-size:15px;border-bottom:1px solid var(--line)}
+#fb input[type=radio]{width:18px;height:18px;margin:0}
+#fb textarea{display:block;width:100%;min-height:96px;margin-top:12px;padding:10px;font-size:16px;font-family:inherit;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink)}
+#fb .note{margin-top:6px;font-size:12px;color:var(--sub);line-height:1.6}
+#fb .go{display:block;width:100%;margin-top:12px;border:0;border-radius:10px;padding:14px;font-size:17px;font-weight:700;background:var(--acc);color:#fff}
+#fb .go:disabled{background:var(--bg);color:var(--sub);border:1px solid var(--line)}
 /* 自分の記録 */
 #stats{display:none;padding:8px 18px 40px}
 #stats .sec{margin-bottom:12px}
@@ -155,6 +164,8 @@ table.days tr.today td:first-child{font-weight:700}
 .grades .lb{font-size:15px;font-weight:700}
 #g1 .lb{color:var(--ng)}#g2 .lb{color:#8a6d1f}#g3 .lb{color:var(--ok)}#g4 .lb{color:var(--acc)}
 .anki .grades{display:flex}
+.keys{display:none;margin-top:10px;font-size:12px;color:var(--sub)}
+@media (hover:hover) and (pointer:fine){.keys{display:block}}
 .anki .btns{margin-top:8px}
 .anki #bng,.anki #bok{display:none}
 
@@ -192,10 +203,22 @@ button.w.on .t{color:var(--ng)}
  <div class="left" id="leftBox"><div class="lab">今日の残り</div><div class="num" id="leftNum"></div><div class="per" id="leftPer"></div></div>
  <button id="hubNote"></button>
  <div id="books"></div>
+ <button id="fbLink">おかしな所・不具合を先生に送る</button>
 </div>
 
 <div id="settings">
  <div class="sec"><h2>毎日の通知</h2><div id="notify"></div></div>
+</div>
+
+<div id="fb">
+ <div class="sec">
+  <h2>おかしな所・不具合を先生に送る</h2>
+  <div id="fbOpts"></div>
+  <textarea id="fbText" maxlength="200" placeholder="どの画面で何が起きたか（200 字まで。書かなくても送れる）"></textarea>
+  <div class="note">名前・電話番号・メールアドレスは書かないでね。開いている単語帳・画面・端末の種類は自動で付く</div>
+  <button class="go" id="fbSend">送る</button>
+  <div class="note" id="fbNote"></div>
+ </div>
 </div>
 
 <div id="stats"></div>
@@ -209,6 +232,7 @@ button.w.on .t{color:var(--ng)}
   <button id="g3"><span class="iv"></span><span class="lb">正解</span></button>
   <button id="g4"><span class="iv"></span><span class="lb">簡単</span></button>
  </div>
+ <div class="keys" id="keys"></div>
  <div class="btns">
   <button class="round" id="bng" aria-label="ミス">✕</button>
   <button class="round" id="bundo" aria-label="ひとつ戻す">↶</button>
@@ -260,7 +284,8 @@ function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.cl
 function screen(id) {
   document.body.classList.toggle("lock", id === "swipe");
   if (id !== "swipe") window.scrollTo(0, 0);
-  ["msg", "hub", "swipe", "review", "settings", "stats"].forEach(function (k) { $(k).style.display = "none"; });
+  if (id !== "fb") LASTSCR = id;
+  ["msg", "hub", "swipe", "review", "settings", "stats", "fb"].forEach(function (k) { $(k).style.display = "none"; });
   $(id).style.display = id === "swipe" ? "flex" : "block";
   $("progWrap").style.display = (id === "swipe" || id === "review") ? "block" : "none";
   $("back").style.display = PERIOD && id !== "hub" && id !== "msg" ? "block" : "none";
@@ -478,6 +503,37 @@ $("gear").onclick = function () { screen("settings"); $("title").textContent = "
 $("back").onclick = function () { commit(); hub(); };
 $("rec").onclick = function () { stats(); };
 
+// ================================================================ 不具合を先生に送る（本人希望 2026-10-24）
+// 2026-10-17 に期間のデータを出し忘れ、越智・深町のアプリに 1 週間テスト範囲が出なかった（生徒の口頭の報告で判明）。
+// 送るのは種類・200 字までの一言・その時の様子（版・画面・期間・単語帳・最後のカード・端末の種類）だけ。氏名は扱わない
+var LASTSCR = "hub";
+var FB_KINDS = [["range", "テスト範囲・単語の範囲がおかしい"], ["word", "単語・訳・例文がおかしい"], ["stuck", "動かない・固まる・読み込めない"],
+                ["notify", "通知が来ない・おかしい"], ["other", "その他"]];
+function fbCtx() {
+  var w = S && S.idx && S.deck && S.idx.length ? S.deck[S.idx[Math.min(S.i, S.idx.length - 1)]] : null;
+  return { v: BUILD || "", scr: LASTSCR, h: P ? P.handout : "", te: P ? P.test : "",
+           bks: P ? P.books.map(function (b) { return b.label || ""; }) : [], w: w ? [w[5], w[4], w[1]] : null,
+           dev: (isIOS() ? "iOS" : /Android/.test(navigator.userAgent) ? "Android" : "PC") + (standalone() ? "・ホーム画面" : "") };
+}
+$("fbLink").onclick = function () {
+  screen("fb"); $("title").textContent = "不具合を送る"; $("count").textContent = "";
+  var box = $("fbOpts"); box.innerHTML = "";
+  FB_KINDS.forEach(function (k) {
+    var lb = el("label"), r = el("input"); r.type = "radio"; r.name = "fbk"; r.value = k[0];
+    lb.appendChild(r); lb.appendChild(document.createTextNode(k[1])); box.appendChild(lb);
+  });
+  $("fbText").value = ""; $("fbNote").textContent = ""; $("fbSend").disabled = false; $("fbSend").textContent = "送る";
+};
+$("fbSend").onclick = function () {
+  var r = document.querySelector("input[name=fbk]:checked");
+  if (!r) { $("fbNote").textContent = "上から 1 つ選んでね"; return; }
+  var body = { c: ME, p: SID, k: r.value, x: $("fbText").value.trim().slice(0, 200), ctx: fbCtx() };
+  store(PENDING, pending().concat([{ t: Date.now() + Math.random(), to: "f", body: body }]));
+  flush();
+  $("fbSend").disabled = true; $("fbSend").textContent = "送った";
+  $("fbNote").textContent = "ありがとう。電波が悪いときは、次に開いたときに送り直す";
+};
+
 // ================================================================ 自分の記録
 // 配ったデータの記録（取り込み済みのぶん）と端末の記録を合わせる。同じ語・同じ日は端末を優先
 function mergedHist() {
@@ -622,6 +678,7 @@ function begin(bk, kind, deck, round) {
   // 前の回で学習中のまま終わった語は、その続きから（出す時刻も守る。ほかに出す語が無ければ待たずに出す）
   if (PERIOD) { var pd = pendAll(); deck.forEach(function (w, k) { if (pd[w[5]]) S.lst[k] = pendState(pd[w[5]]); }); }
   $("swipe").classList.toggle("anki", !!PERIOD);
+  $("keys").textContent = PERIOD ? "キーボード：Space めくる　1〜4 評価　Z 戻す" : "キーボード：Space めくる　← ミス　→ 覚えてた　Z 戻す";
   $("hintL").textContent = PERIOD ? "← もう一度" : "← ミス"; $("hintR").textContent = PERIOD ? "正解 →" : "覚えてた →";
   var names = { today: "今日の分", more: "もっとやる", miss: "ミスだけ", again: "もう一周", weak: "苦手語", test: "テスト範囲", "new": "今日の分・新規", review: "今日の分・復習" };
   $("title").textContent = (bk.label || "") + "　" + names[kind] + (round > 1 ? "　" + round + "周目" : "");
@@ -789,6 +846,25 @@ function decide(g, dir) {
 $("bng").onclick = function () { decide(1, -1); };
 $("bok").onclick = function () { decide(3, 1); };
 [1, 2, 3, 4].forEach(function (g) { $("g" + g).onclick = function () { decide(g, g === 1 ? -1 : 1); }; });
+// PC のキーボード操作（本人希望 2026-10-20、Anki と同じ割り当て）
+//   Space/Enter＝答えを見る（めくるだけ。続けて押しても評価しない）、1〜4＝評価、←＝もう一度（ミス）、→＝正解（覚えてた）、Backspace/Z＝ひとつ戻す、R＝発音
+document.addEventListener("keydown", function (e) {
+  if ($("swipe").style.display !== "flex" || e.metaKey || e.ctrlKey || e.altKey) return;
+  var card = $("stage").querySelector(".card"), k = e.key, g = 0;
+  if (!card) return;
+  if (k === " " || k === "Enter" || /^[1-4]$/.test(k) || k === "ArrowLeft" || k === "ArrowRight" || k === "Backspace") e.preventDefault();
+  // 最後にクリックしたボタンにフォーカスが残っていると Space で押されてしまうので外す
+  if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+  if (e.repeat) return;
+  if (k === "r" || k === "R") { var sb = card.querySelector(".say"); if (sb) sb.click(); return; }
+  if (k === "Backspace" || k === "z" || k === "Z") { if (!$("bundo").disabled) $("bundo").click(); return; }
+  if (!S.flipped) { if (k === " " || k === "Enter") flip(card, card.querySelector(".back")); return; }
+  if (k === "ArrowRight") g = 3;
+  else if (k === "ArrowLeft") g = 1;
+  else if (PERIOD && /^[1-4]$/.test(k)) g = +k;
+  else if (!PERIOD && (k === "1" || k === "3")) g = +k;
+  if (g) decide(g, g === 1 ? -1 : 1);
+});
 $("bundo").onclick = function () {
   if (S.i > S.sentN && !busy) {
     S.i--; fsrsUndo(S.fs[S.i]);
@@ -962,9 +1038,9 @@ function flush() {
   pending().forEach(function (item) {
     if (SENDING[item.t]) return;                 // 送っている最中のものは送らない（二重に届くのを防ぐ）
     SENDING[item.t] = 1;
-    // to: "w" は通知サーバー（講師アプリ・講師への通知、2026-09-17）。それ以外は Apps Script（Drive の元記録）
-    var req = item.to === "w"
-      ? fetch(NOTIFY + "/rec", { method: "POST", keepalive: true, body: JSON.stringify(item.body) }).then(function (r) { if (!r.ok) throw new Error("http"); })
+    // to: "w" は通知サーバー（講師アプリ・講師への通知、2026-09-17）、"f" は同じサーバーの不具合の受け口（2026-10-24）。それ以外は Apps Script（Drive の元記録）
+    var req = item.to === "w" || item.to === "f"
+      ? fetch(NOTIFY + (item.to === "f" ? "/fb" : "/rec"), { method: "POST", keepalive: true, body: JSON.stringify(item.body) }).then(function (r) { if (!r.ok) throw new Error("http"); })
       : fetch(API, { method: "POST", mode: "no-cors", keepalive: true, body: JSON.stringify(item.body) });
     req
       .then(function () { store(PENDING, pending().filter(function (x) { return x.t !== item.t; })); })

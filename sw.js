@@ -36,6 +36,17 @@ function readTeacher() {
 self.addEventListener("push", function (e) {
   var msg = null;
   try { msg = e.data ? e.data.json() : null; } catch (err) { msg = null; }
+  if (msg && msg.t === "fb") {
+    // 講師への通知：生徒から不具合の報告（2026-10-24）。中身は講師アプリで見る
+    e.waitUntil(readTeacher().then(function (tc) {
+      var name = (tc && tc.names && tc.names[msg.c]) || "生徒 " + msg.c;
+      var kinds = { range: "テスト範囲・単語の範囲", word: "単語・訳・例文", stuck: "動かない・固まる・読み込めない", notify: "通知", other: "その他" };
+      return self.registration.showNotification(name + " から不具合の報告", {
+        body: (kinds[msg.k] || "") + "（講師アプリで見る）", tag: "fb-" + msg.c + "-" + Date.now(), data: { url: tc && tc.url }
+      });
+    }));
+    return;
+  }
   if (msg && msg.t === "rec") {
     // 講師への通知：生徒が回を終えた（氏名は端末の対応表から）
     e.waitUntil(readTeacher().then(function (tc) {

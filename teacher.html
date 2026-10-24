@@ -79,6 +79,13 @@ tr.miss td{color:var(--ng)}
 .wk .x{color:var(--ng);flex:none;font-size:12px;white-space:nowrap;font-variant-numeric:tabular-nums}
 .wk .m{color:var(--sub);font-size:12px;margin-top:2px;word-break:break-all}
 /* 上の一覧：誰がいつ最後にやったか＋直近 7 日の回答数 */
+/* 生徒からの不具合の報告（2026-10-24） */
+.fbs{background:var(--card);border:1px solid var(--warn);border-radius:12px;padding:12px 14px;margin-bottom:12px}
+.fbs h2{margin:0 0 4px;font-size:15px;color:var(--warn)}
+.fbs .fb{padding:8px 0;border-top:1px solid var(--line);font-size:13px;line-height:1.5}
+.fbs .fb:first-of-type{border-top:0}
+.fbs .fb .x{font-size:14px;color:var(--ink);white-space:pre-wrap;word-break:break-all}
+.fbs .fb .cx{font-size:11px;color:var(--sub)}
 .ov{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 10px;margin-bottom:12px}
 .ov h2{margin:0 4px 2px;font-size:15px}
 .ov .lat{margin:0 4px 6px;font-size:12px;color:var(--sub);line-height:1.5}
@@ -202,10 +209,32 @@ function loadRecs() {
     return d.days;
   });
 }
+// 生徒からの不具合の報告（2026-10-24 本人希望）。読めなくても記録の表示は止めない
+var FBS = [];
+function loadFbs() {
+  return post("/t/fbs", { token: TOKEN }).then(function (d) { return d.ok ? d.fbs : []; }, function () { return []; });
+}
+var FB_NAME = { range: "テスト範囲・単語の範囲", word: "単語・訳・例文", stuck: "動かない・固まる・読み込めない", notify: "通知", other: "その他" };
+var SCR_NAME = { hub: "一覧", swipe: "カード", review: "結果", settings: "設定", stats: "記録", msg: "メッセージ" };
+function fbBox(today) {
+  var since = new Date(addDays(today, -14) + "T00:00:00").getTime(), list = FBS.filter(function (f) { return f.at >= since; });
+  if (!list.length) return null;
+  var box = el("div", "fbs");
+  box.appendChild(el("h2", null, "不具合の報告（2 週間・" + list.length + " 件）"));
+  list.forEach(function (f) {
+    var c = f.ctx || {}, row = el("div", "fb");
+    row.appendChild(el("div", null, (NAMES[f.c] || "生徒 " + f.c) + "　" + hm(f.at) + "　" + (FB_NAME[f.k] || f.k)));
+    if (f.x) row.appendChild(el("div", "x", f.x));
+    row.appendChild(el("div", "cx", [SCR_NAME[c.scr] || c.scr, c.h && c.te ? "期間 " + md(c.h) + "〜テスト " + md(c.te) : "",
+      (c.bks || []).join("・"), c.w ? "最後のカード " + c.w[1] + " " + c.w[2] : "", c.dev, "版 " + c.v].filter(Boolean).join("　")));
+    box.appendChild(row);
+  });
+  return box;
+}
 function refresh() {
   $("meta").textContent = "読み込み中…";
-  Promise.all([loadData(), loadRecs()]).then(function (x) {
-    DATA = x[0]; render(x[1]);
+  Promise.all([loadData(), loadRecs(), loadFbs()]).then(function (x) {
+    DATA = x[0]; FBS = x[2]; render(x[1]);
     $("meta").textContent = "更新 " + hm(Date.now()) + "・範囲のデータ " + DATA.made.replace("T", " ");
   }).catch(function (e) {
     $("meta").textContent = "";
@@ -224,6 +253,7 @@ function render(dayList) {
   dayList.forEach(function (x) { (byCode[x[0]] = byCode[x[0]] || []).push.apply(byCode[x[0]], x[2]); });
   var ses = {};
   ORDER.forEach(function (c) { ses[c] = prep(c, byCode[c] || []); });
+  var fb = fbBox(today); if (fb) main.appendChild(fb);
   if (ORDER.length) main.appendChild(overview(ses, today));
   ORDER.forEach(function (c) { main.appendChild(studentBlock(c, ses[c], today, opened[c])); });
   if (!ORDER.length) main.appendChild(el("div", "msg", "生徒がいない。QR を読み直してね"));
