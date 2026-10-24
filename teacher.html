@@ -132,6 +132,20 @@ tr.miss td{color:var(--ng)}
 .ov table.wk7 th{cursor:pointer}
 .ov table.wk7 th.t{background:var(--acc);color:#fff;border-radius:6px}
 .ov td.nm7{font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* いまの範囲 */
+.rgs .rgi{padding:10px 4px;border-top:1px solid var(--line);cursor:pointer}
+.rgs .rgi:first-of-type{border-top:0}
+.rgh{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.rgh .on{font-size:15px;font-weight:700}
+.rgh .rt{font-size:13px;font-weight:600;color:var(--acc);white-space:nowrap}
+.rgh .rt.old{color:var(--ng);white-space:normal;text-align:right}
+.rgd{font-size:11px;color:var(--sub);margin-top:2px}
+.rg{display:flex;gap:8px;align-items:flex-start;margin-top:6px}
+.rg .rb{flex:none;font-size:11px;font-weight:700;border-radius:6px;padding:2px 6px;color:#fff;background:var(--acc)}
+.rg .rb.k{background:#8a5cc7}
+.rg .rx{min-width:0;font-variant-numeric:tabular-nums}
+.rg .rx b{display:block;font-size:15px}
+.rg .rl{display:block;font-size:11px;color:var(--sub);line-height:1.4}
 .sh .today.ok{color:var(--ok)}
 .sh .today.ng{color:var(--warn)}
 .ov td.z{color:#c8c8d0}
@@ -281,7 +295,7 @@ function render(dayList) {
   var ses = {};
   ORDER.forEach(function (c) { ses[c] = prep(c, byCode[c] || []); });
   var fb = fbBox(today); if (fb) main.appendChild(fb);
-  if (ORDER.length) main.appendChild(overview(ses, today));
+  if (ORDER.length) { main.appendChild(overview(ses, today)); main.appendChild(rangeBox(today)); }
   ORDER.forEach(function (c) { main.appendChild(studentBlock(c, ses[c], today, opened[c])); });
   if (!ORDER.length) main.appendChild(el("div", "msg", "生徒がいない。QR を読み直してね"));
 }
@@ -394,6 +408,59 @@ function splitText(x, f) {
   var a = [];
   if (x.e.n) a.push("英 " + f(x.e)); if (x.k.n) a.push("古 " + f(x.k));
   return a.join("\n");
+}
+// いまの期間（渡した日が今日以前で一番新しい）
+function curPeriod(c, today) {
+  var cur = null;
+  (DATA.students[c] || []).forEach(function (p) { if (p.handout <= today && (!cur || p.handout >= cur.handout)) cur = p; });
+  return cur;
+}
+// 単語帳ごとの範囲（2026-10-24 本人「生徒ごとの範囲もしっかりわかるように」）
+// テスト範囲＝語の並びの後ろ tn 語、それより前は前週ぶん（宿題で復習するだけ）
+function bookRange(bk) {
+  var nos = bk.words.map(function (x) { return +x[1]; }), tn = bk.tn != null ? bk.tn : nos.length;
+  var t = nos.slice(nos.length - tn), pre = nos.slice(0, nos.length - tn);
+  function span(a) { return a.length ? Math.min.apply(null, a) + "〜" + Math.max.apply(null, a) + "（" + a.length + " 語）" : ""; }
+  return { test: span(t), pre: span(pre) };
+}
+function rangeRows(cur) {
+  return cur.books.map(function (bk) {
+    var r = bookRange(bk), row = el("div", "rg");
+    row.appendChild(el("span", "rb " + (bk.b === "k" ? "k" : "e"), bookName(bk.b)));
+    var tx = el("span", "rx");
+    tx.appendChild(el("b", null, "テスト " + (r.test || "—")));
+    tx.appendChild(el("span", "rl", bk.label + (r.pre ? "・前週ぶん " + r.pre : "") + (bk.daily ? "・毎日 " + bk.daily + " 語ずつ" + restLabel(bk.rest) : "")));
+    row.appendChild(tx);
+    return row;
+  });
+}
+function rangeBox(today) {
+  var box = el("div", "ov rgs");
+  box.appendChild(el("h2", null, "いまの範囲"));
+  ORDER.forEach(function (c) {
+    var cur = curPeriod(c, today), item = el("div", "rgi"), hd = el("div", "rgh");
+    hd.appendChild(el("span", "on", NAMES[c]));
+    // テスト日を過ぎても新しい期間が渡っていない（期間データの作り忘れ）は赤で知らせる
+    var old = cur && cur.test < today;
+    hd.appendChild(el("span", "rt" + (!cur || old ? " old" : ""), !cur ? "期間なし" : old ? "テスト " + md(cur.test) + " 済み・新しい範囲なし"
+      : "テスト " + md(cur.test) + "・あと " + days(today, cur.test) + " 日"));
+    item.appendChild(hd);
+    if (cur) {
+      item.appendChild(el("div", "rgd", "渡した日 " + md(cur.handout)));
+      rangeRows(cur).forEach(function (r) { item.appendChild(r); });
+    }
+    var nx = ((DATA.plan || {})[c] || []).filter(function (p) { return (!cur || p.handout > cur.handout) && p.test >= today; })[0];
+    if (nx) item.appendChild(el("div", "rgd", "次：" + md(nx.handout) + " 渡し・テスト " + md(nx.test) + "　" +
+      nx.books.map(function (bk) { return bookName(bk.b) + " " + bk.range; }).join("　")));
+    item.onclick = function () {
+      var card = document.querySelector('.st[data-c="' + c + '"]');
+      if (!card) return;
+      card.classList.add("open"); card.querySelector(".arrow").textContent = "▲";
+      card.scrollIntoView({ behavior: "smooth", block: "start" });
+    };
+    box.appendChild(item);
+  });
+  return box;
 }
 var SEL_DAY = null;
 function overview(ses, today) {
@@ -568,6 +635,7 @@ function studentBlock(c, sessions, today, open) {
   var lastS = sessions[sessions.length - 1];
   sum.appendChild(el("div", "sl", (lastS ? "最後 " + whenLabel(lastS.ended || lastS.started, today) : "記録なし") +
     (cur ? "・テスト " + md(cur.test) + "（あと " + Math.max(0, days(today, cur.test)) + " 日）" : "・期間なし")));
+  if (cur) rangeRows(cur).forEach(function (r) { sum.appendChild(r); });
   var chips = el("div", "chips"), body = el("div", "body");
   if (cur) cur.books.forEach(function (bk) {
     var info = bookBlock(bk, cur, W, st, last, first, firsts, recs, today, q && q.books[bk.b]);
