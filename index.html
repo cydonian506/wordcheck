@@ -317,12 +317,15 @@ function fsrsNext(st, g, t) {
 }
 function fsrsKey() { return "fsrs:" + ME; }
 function fsrsAll() { return store(fsrsKey()) || {}; }
-// 端末の記録と、配られたデータ（それまでの全記録から計算したもの）の新しいほうを使う
+// 端末の記録と、配られたデータ（それまでの全記録から計算したもの）の新しいほうを使う。
+// 同じ日なら配られたほうを使う：紙の週テストの誤答（2026-10-25〜）はテストの日に「もう一度」として
+// 配られたデータにだけ入るので、その日アプリで ○ にしていても誤答が勝つように。
+// その日の最初の回答は先に記録サーバーへ届くので、同じ日付の配られた状態は端末のものを含んでいる
 function fsrsSeed() {
   var mine = fsrsAll(), cards = (P && P.cards) || {};
   Object.keys(cards).forEach(function (row) {
     var c = cards[row], seed = [c[5], c[6], c[7]];
-    if (!mine[row] || mine[row][2] < seed[2]) mine[row] = seed;
+    if (!mine[row] || mine[row][2] <= seed[2]) mine[row] = seed;
   });
   store(fsrsKey(), mine);
 }
@@ -535,12 +538,14 @@ $("fbSend").onclick = function () {
 };
 
 // ================================================================ 自分の記録
-// 配ったデータの記録（取り込み済みのぶん）と端末の記録を合わせる。同じ語・同じ日は端末を優先
+// 配ったデータの記録（取り込み済みのぶん）と端末の記録を合わせる。同じ語・同じ日は端末を優先。
+// ただし配ったほうが ✕ の日は ✕ にする（紙の週テストの誤答はそちらにだけ入る。2026-10-25）
 function mergedHist() {
   var h = histAll(), d = (P && P.hist) || {}, out = {};
-  Object.keys(h).forEach(function (r) { out[r] = h[r].slice(); });
+  Object.keys(h).forEach(function (r) { out[r] = h[r].map(function (x) { return x.slice(); }); });
   Object.keys(d).forEach(function (r) {
-    var have = {}; (out[r] || []).forEach(function (x) { have[x[0]] = 1; });
+    var have = {}; (out[r] || []).forEach(function (x) { have[x[0]] = x; });
+    d[r].forEach(function (x) { if (have[x[0]] && !x[1]) have[x[0]][1] = 0; });
     out[r] = (out[r] || []).concat(d[r].filter(function (x) { return !have[x[0]]; }));
     out[r].sort(function (a, b) { return a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0; });
   });
