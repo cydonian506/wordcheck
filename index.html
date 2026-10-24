@@ -272,11 +272,14 @@ var VAPID = "BP7_JwgCCmh-V3y54PnC3u9K5KV1RZZWYuIvhTfC1a_X6v7ry_OkzieJ2P4fn8-CM5t
 var DEFAULT_TIME = "19:00";         // 通知の時刻の既定（生徒が 30 分刻みで変えられる。Worker と合わせる）
 var SID = (new URLSearchParams(location.search).get("s") || "").trim().toLowerCase();
 var KEY = new URLSearchParams(location.hash.slice(1)).get("k") || "";
-var PERIOD = SID.charAt(6) === "p";
+// 本人決定（2026-10-25）：アプリの QR は毎週は渡さない。QR は生徒ごとの「最新の期間の置き場」（7 文字目 q）を指し、
+// 開くたびにそこから今の期間へ進む。前の期間のアドレス（ホーム画面のアイコンなど）でも、最新の置き場を覚えておいて進む
+var POINTER = SID.charAt(6) === "q";
+var PERIOD = SID.charAt(6) === "p" || POINTER;
 var REPORT = SID.charAt(6) === "t" || SID.charAt(6) === "u";   // 週テストの解答用紙の QR：誤答の番号を送るだけ（2026-10-25）
 var ME = SID.slice(0, 6);                // 生徒コード（端末に残す FSRS のまとまり）
 // ホーム画面のアイコンは古い期間のアドレスで開く → 端末に残した新しい期間があればそちらを使う
-if (PERIOD) {
+if (PERIOD && !POINTER) {
   var CUR = store("cur:" + ME);
   if (CUR && CUR.s && CUR.k && CUR.s.slice(7, 13) > SID.slice(7, 13)) { SID = CUR.s; KEY = CUR.k; }
 }
@@ -375,7 +378,7 @@ function dueCards(b) {
 }
 
 // ================================================================ 今日の分
-// 決め方は left.js（前半で新しい語を出し切る・テスト前日は範囲を 1 周）。新しい語はその日に初めて開いたときに
+// 決め方は left.js（新しい語は前々日まで均等・テスト前日は範囲を 1 周）。新しい語はその日に初めて開いたときに
 // ランダムに決めて端末に残す
 function testRows(bk) { return bk.tn != null ? bk.words.slice(bk.words.length - bk.tn).map(function (w) { return w[5]; }) : bk.words.map(function (w) { return w[5]; }); }
 function testSet(bk) { var m = {}; testRows(bk).forEach(function (r) { m[r] = 1; }); return m; }
@@ -1159,15 +1162,18 @@ function loadLocal(id, key) {
     .then(function (buf) { return JSON.parse(new TextDecoder().decode(buf)); });
 }
 function loadApi() { return fetch(API + "?s=" + SID).then(function (r) { return r.json(); }).then(function (d) { if (!d.ok) throw new Error("nf"); return d; }); }
-if (!/^[0-9a-z]{23}$/.test(SID)) {
+if (!(POINTER ? /^[0-9a-z]{17}$/ : /^[0-9a-z]{23}$/).test(SID)) {   // 最新の置き場の ID は日付が無いので 17 文字
   show("この QR のデータが見つからない。先生に知らせてね");
 } else {
   screen("msg");
-  (KEY ? loadLocal(SID, KEY).catch(function (e) { if (PERIOD) throw e; return loadApi(); }) : loadApi())
+  (POINTER ? loadLocal(SID, KEY).then(function (x) { SID = x.s; KEY = x.k; }) : Promise.resolve())
+    .then(function () { return KEY ? loadLocal(SID, KEY).catch(function (e) { if (PERIOD) throw e; return loadApi(); }) : loadApi(); })
     .then(function (d) {
       if (PERIOD) {
         if (!d.books) { show("古い QR です。先生に新しい QR をもらってね"); return; }
         P = d;
+        if (d.ptr) store("ptr:" + ME, d.ptr);           // 前の期間のデータが消えても、ここから最新へ進める
+        store("ptr:tried", null);
         // 範囲の語と、前の期間の語（復習に出る）の索引
         Object.keys(P.cards || {}).forEach(function (row) { var c = P.cards[row]; INDEX[row] = [0, c[1], c[2], c[3], c[4], +row, c[8], c[9], c[10], c[11]]; BOOK[row] = c[0]; });
         P.books.forEach(function (bk) { bk.words.forEach(function (w) { INDEX[w[5]] = w; BOOK[w[5]] = bk.b; }); });
@@ -1177,7 +1183,18 @@ if (!/^[0-9a-z]{23}$/.test(SID)) {
       var bk = { b: SID.charAt(6), label: d.title, words: d.words };
       begin(bk, "today", d.words, 1);
     })
-    .catch(function (e) { show(e && e.message === "nf" ? "この QR のデータが見つからない。先生に知らせてね" : "読み込めなかった。電波のいい所でもう一回開いてね"); });
+    .catch(function (e) {
+      // 前の期間のデータが片づけられていたら、覚えておいた最新の置き場から今の期間へ
+      var ptr = PERIOD && !POINTER && store("ptr:" + ME);
+      if (e && e.message === "nf" && ptr && !store("ptr:tried")) {
+        store("ptr:tried", 1);
+        loadLocal(ptr[0], ptr[1]).then(function (x) { store("cur:" + ME, { s: x.s, k: x.k }); location.reload(); })
+          .catch(function () { store("ptr:tried", null); show("この QR のデータが見つからない。先生に知らせてね"); });
+        return;
+      }
+      store("ptr:tried", null);
+      show(e && e.message === "nf" ? "この QR のデータが見つからない。先生に知らせてね" : "読み込めなかった。電波のいい所でもう一回開いてね");
+    });
 }
 </script>
 </body>

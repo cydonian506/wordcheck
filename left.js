@@ -1,13 +1,13 @@
 // 今日の分の決め方と、今日の残り（ページと通知の service worker の両方で使う）
 //
-// 本人決定（2026-09-17）：新しい語は期間の前半で出し切る（均等割だとテスト前日に初めて見る語が出るため）。
-//   - 前半（宿題の日数の半分、最後の日は含めない）：まだやっていない語を 残り÷前半の残り日数 ずつ
-//   - 後半：FSRS の期限の語だけ（出遅れてまだやっていない語があれば全部出す）
+// 本人決定（2026-10-25）：新しい語はテストの前々日までの毎日に均等に割る（2026-09-17〜の「前半で出し切る」はやめた）。
+//   - 渡した日〜テストの前々日：今日までに出し終える数（範囲×経過日数÷その日数）からやった語を引いた数＋期限の語
 //   - テストの前日（と当日）：テスト範囲を全部 1 周（今日もうやった語は除く）＋期限の語
+//   WC_INTRO_RATIO で新しい語を出す日の割合を変えられる（1＝前々日まで全部、0.5＝前半だけ）
 // snapshot = { handout, test, books: [{b, label, rows, t, daily}], bookOf: {行番号: b},
 //              fsrs: {行番号: [安定度, 難易度, 最後の日]}, plans: {b: {date, rows}}, pend: [学習ステップの途中の行番号（前の日のぶんも）], url }
 //   t はテスト範囲（次週）の行番号。古いデータで無ければ rows 全部を使う
-var WC_REVIEW_MAX = 100, WC_FINAL_REVIEW_MAX = 50, WC_INTRO_RATIO = 0.5;   // 前日は範囲の 1 周が主なので期限の語を絞る
+var WC_REVIEW_MAX = 100, WC_FINAL_REVIEW_MAX = 50, WC_INTRO_RATIO = 1;     // 前日は範囲の 1 周が主なので期限の語を絞る
 // 本人決定（2026-10-10）：1 日の切り替わりは朝 3 時（夜中の 0〜3 時は前の日のぶん）
 var WC_DAY_START_H = 3;
 function wcDayOf(ms) { return wcIso(new Date(ms - WC_DAY_START_H * 3600000)); }
@@ -15,7 +15,7 @@ function wcToday() { return wcDayOf(Date.now()); }
 function wcIso(d) { return d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).slice(-2) + "-" + ("0" + d.getDate()).slice(-2); }
 function wcDays(a, b) { return Math.round((new Date(b + "T00:00:00") - new Date(a + "T00:00:00")) / 86400000); }
 
-// 今日が期間のどこか。{kind: "intro"|"review"|"final", left: 前半の残り日数（今日を含む）, intro: 前半の日数}
+// 今日が期間のどこか。{kind: "intro"|"review"|"final", left: 新しい語を出す日の残り（今日を含む）, intro: その日数}
 function wcPhase(handout, test, today) {
   if (wcDays(today, test) <= 1) return { kind: "final", left: 0 };
   if (!handout) return { kind: "intro", left: wcDays(today, test) - 1, intro: 0 };   // 古いデータ：前日まで均等
@@ -25,12 +25,12 @@ function wcPhase(handout, test, today) {
   return left >= 1 ? { kind: "intro", left: left, intro: intro } : { kind: "review", left: 0 };
 }
 // 今日出す新しい語の数（final では使わない）。total＝範囲の語数
-// 本人決定（2026-10-10）：やり残しは翌日に積む。今日までに出し終える数（範囲×経過日数÷前半の日数）からやった語を引く
+// 本人決定（2026-10-10）：やり残しは翌日に積む。今日までに出し終える数（範囲×経過日数÷新しい語を出す日数）からやった語を引く
 // （前の版は 残り÷残り日数 で、やり残しが後ろの日に薄く散っていた）
 function wcFreshCount(unseen, phase, total) {
   if (phase.kind !== "intro") return unseen;
   if (!phase.intro || total == null) return Math.ceil(unseen / Math.max(1, phase.left));
-  var k = phase.intro - phase.left + 1;                                     // 前半の何日目か
+  var k = phase.intro - phase.left + 1;                                     // 新しい語を出す日の何日目か
   return Math.max(0, Math.min(unseen, Math.ceil(total * k / phase.intro) - (total - unseen)));
 }
 // 期限が来ているか
