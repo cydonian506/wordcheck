@@ -105,6 +105,8 @@ function wcDailyRows(bk, fsrs, handout, today, test) {
   return old.concat(t.filter(function (r) { return !fsrs[r]; }).slice(0, room));
 }
 
+// 今日もうやった復習の数（Anki と同じく 1 日の上限から引く。2026-10-25）。snap.day が今日のときだけ
+function wcRevDone(snap, b, today) { return snap.rev && snap.day === today ? (snap.rev[b] || 0) : 0; }
 function wcLeft(snap, today) {
   today = today || wcToday();
   var fsrs = snap.fsrs || {}, out = [], phase = wcPhase(snap.handout, snap.test, today);
@@ -116,7 +118,7 @@ function wcLeft(snap, today) {
       fin.forEach(function (r) { inFin[r] = 1; });
       var due = 0;
       Object.keys(fsrs).forEach(function (row) { if (snap.bookOf[row] === bk.b && !inFin[row] && wcDue(fsrs[row], today)) due++; });
-      n = fin.length + Math.min(due, WC_FINAL_REVIEW_MAX);
+      n = fin.length + Math.min(due, Math.max(0, WC_FINAL_REVIEW_MAX - wcRevDone(snap, bk.b, today)));
     } else {
       var d = 0;
       Object.keys(fsrs).forEach(function (row) { if (snap.bookOf[row] === bk.b && wcDue(fsrs[row], today)) d++; });
@@ -124,7 +126,7 @@ function wcLeft(snap, today) {
       if (plan && plan.date === today) fresh = plan.rows.filter(function (r) { return !fsrs[r]; }).length;
       else if (bk.daily && snap.handout) fresh = wcDailyRows(bk, fsrs, snap.handout, today, snap.test).length;
       else fresh = wcFreshCount(bk.rows.filter(function (r) { return !fsrs[r]; }).length, phase, bk.rows.length);
-      n = Math.min(d, WC_REVIEW_MAX) + fresh;
+      n = Math.min(d, Math.max(0, WC_REVIEW_MAX - wcRevDone(snap, bk.b, today))) + fresh;
     }
     // 学習ステップの途中で終わった語（抜けるまで残る。前の日のぶんも翌日に積む。期限の語・前日の 1 周と重なる語は上で数えた）
     n += (snap.pend || []).filter(function (r) {
