@@ -171,6 +171,11 @@ table.days tr.today td:first-child{font-weight:700}
 
 /* 結果 */
 #review{display:none;padding:8px 18px 40px}
+/* 週テストの誤答を送る画面（解答用紙の QR、2026-10-25） */
+#report{display:none;padding:8px 18px 40px}
+#repSend{width:100%;margin:14px 0 6px;background:var(--acc);border-color:var(--acc);color:#fff}
+#repSend:disabled{opacity:.5}
+#repNote{font-size:13px;color:var(--sub);min-height:1.2em}
 .result{margin:8px 0 18px}
 .result .big{font-size:40px;font-weight:700;font-variant-numeric:tabular-nums}
 .result .big small{font-size:18px;color:var(--sub);font-weight:600;margin-left:4px}
@@ -179,7 +184,7 @@ table.days tr.today td:first-child{font-weight:700}
 .pill{border:1px solid var(--line);border-radius:10px;padding:14px;font-size:16px;font-weight:600;background:var(--card)}
 #againMiss{background:var(--acc);border-color:var(--acc);color:#fff}
 .lead{font-size:13px;color:var(--sub);margin:0 0 8px}
-#list{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px}
+#list,#repList{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px}
 button.w{display:flex;flex-direction:column;align-items:flex-start;text-align:left;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:var(--card);min-height:50px;word-break:break-all}
 button.w .n{font-size:11px;color:var(--sub)}
 button.w .t{font-size:15px;font-weight:600;margin-top:1px}
@@ -251,6 +256,14 @@ button.w.on .t{color:var(--ng)}
  <div id="list"></div>
 </div>
 
+<div id="report">
+ <div class="result"><div class="big"><span id="repScore">0</span><small id="repOutof"></small></div><div class="sub" id="repSub"></div></div>
+ <p class="lead">解答用紙で✓を付けた問（間違えた問）を押して赤にする。もう一度押すと戻る。</p>
+ <div id="repList"></div>
+ <button class="pill" id="repSend">この内容で先生に送る</button>
+ <div id="repNote"></div>
+</div>
+
 <script src="left.js"></script>
 <script>
 var API = "https://script.google.com/macros/s/AKfycbwsGa_Uy_OUv4okR-Lms4a0sF0t6gLJrPtoRJc-g5c_Cbr8fRf7_F43nnjzZWrfshJ_0g/exec";   // 2026-09-15 夜（FSRS 対応）にデプロイし直した URL
@@ -260,6 +273,7 @@ var DEFAULT_TIME = "19:00";         // 通知の時刻の既定（生徒が 30 �
 var SID = (new URLSearchParams(location.search).get("s") || "").trim().toLowerCase();
 var KEY = new URLSearchParams(location.hash.slice(1)).get("k") || "";
 var PERIOD = SID.charAt(6) === "p";
+var REPORT = SID.charAt(6) === "t" || SID.charAt(6) === "u";   // 週テストの解答用紙の QR：誤答の番号を送るだけ（2026-10-25）
 var ME = SID.slice(0, 6);                // 生徒コード（端末に残す FSRS のまとまり）
 // ホーム画面のアイコンは古い期間のアドレスで開く → 端末に残した新しい期間があればそちらを使う
 if (PERIOD) {
@@ -285,7 +299,7 @@ function screen(id) {
   document.body.classList.toggle("lock", id === "swipe");
   if (id !== "swipe") window.scrollTo(0, 0);
   if (id !== "fb") LASTSCR = id;
-  ["msg", "hub", "swipe", "review", "settings", "stats", "fb"].forEach(function (k) { $(k).style.display = "none"; });
+  ["msg", "hub", "swipe", "review", "settings", "stats", "fb", "report"].forEach(function (k) { $(k).style.display = "none"; });
   $(id).style.display = id === "swipe" ? "flex" : "block";
   $("progWrap").style.display = (id === "swipe" || id === "review") ? "block" : "none";
   $("back").style.display = PERIOD && id !== "hub" && id !== "msg" ? "block" : "none";
@@ -1097,6 +1111,42 @@ flush();
 
 // ================================================================ 読み込み
 function b64u(s) { s = s.replace(/-/g, "+").replace(/_/g, "/"); while (s.length % 4) s += "="; var b = atob(s), u = new Uint8Array(b.length); for (var j = 0; j < b.length; j++) u[j] = b.charCodeAt(j); return u; }
+// 週テストの誤答を送る。押した No. を端末に残し（開き直しても消えない）、送ると Apps Script の
+// 紙の受け口（sheet_）に { s, miss } で届く。送り直してもよい（取り込みは最後の 1 件を使う）
+function startReport(d) {
+  var key = "rep:" + SID, sel = {}, n = d.words.length;
+  (store(key) || []).forEach(function (no) { sel[no] = 1; });
+  $("title").textContent = d.title;
+  var box = $("repList");                              // 見た目は結果画面の単語の一覧と同じ
+  function count() { return Object.keys(sel).length; }
+  function paint() {
+    $("repScore").textContent = n - count();
+    $("repOutof").textContent = "/ " + n + " 点";
+    $("repSub").textContent = "間違い " + count() + " 問";
+  }
+  d.words.forEach(function (w) {
+    var b = el("button", "w" + (sel[w[0]] ? " on" : ""));
+    b.appendChild(el("span", "n", "No. " + w[0]));
+    b.appendChild(el("span", "t", w[1]));
+    b.appendChild(el("span", "m", w[2]));
+    b.onclick = function () {
+      if (sel[w[0]]) delete sel[w[0]]; else sel[w[0]] = 1;
+      b.classList.toggle("on", !!sel[w[0]]);
+      store(key, Object.keys(sel).map(Number)); paint();
+      $("repNote").textContent = store("sent:" + SID) ? "送ったあとに変えた。もう一度送ってね" : "";
+    };
+    box.appendChild(b);
+  });
+  $("repSend").onclick = function () {
+    var miss = Object.keys(sel).map(Number).sort(function (a, b) { return a - b; });
+    if (!confirm((n - miss.length) + " / " + n + " 点（間違い " + miss.length + " 問）で送る？")) return;
+    store(PENDING, pending().concat([{ t: Date.now() + Math.random(), body: { s: SID, miss: miss } }]));
+    flush(); store("sent:" + SID, 1);
+    $("repNote").textContent = "送った。直したいときは押し直して、もう一度送ればよい";
+  };
+  if (store("sent:" + SID)) $("repNote").textContent = "送信済み。直したいときは押し直して、もう一度送ればよい";
+  paint(); screen("report");
+}
 function loadLocal(id, key) {
   // 同じ QR のデータを作り直したとき古いのが出ないように（GitHub Pages の中継は 10 分残すので、毎回別のアドレスで取る）
   return fetch("d/" + id + ".txt?t=" + Date.now(), { cache: "no-store" })
@@ -1123,6 +1173,7 @@ if (!/^[0-9a-z]{23}$/.test(SID)) {
         P.books.forEach(function (bk) { bk.words.forEach(function (w) { INDEX[w[5]] = w; BOOK[w[5]] = bk.b; }); });
         fsrsSeed(); store("cur:" + ME, { s: SID, k: KEY }); hub(); checkLatest(d.ptr); startPush(); return;
       }
+      if (REPORT || d.report) { startReport(d); return; }
       var bk = { b: SID.charAt(6), label: d.title, words: d.words };
       begin(bk, "today", d.words, 1);
     })
