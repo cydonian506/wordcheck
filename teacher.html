@@ -675,13 +675,13 @@ function bookBlock(bk, p, W, st, last, first, firsts, recs, today, q) {
   node.appendChild(el("h3", null, bk.label));
   node.appendChild(el("div", "rng", bk.range + "・渡した日 " + md(p.handout)));
   var ph = wcPhase(p.handout, p.test, today);
-  var hw = Math.max(1, days(p.handout, p.test) - 1), intro = Math.max(1, Math.min(hw - 1, Math.ceil(hw * 0.5)));
+  var hw = Math.max(1, days(p.handout, p.test) - 1), intro = Math.max(1, Math.min(hw - 1, Math.ceil(hw * WC_INTRO_RATIO)));   // left.js と同じ
   var n = rows.length, seen = rows.filter(function (r) { return first[r]; }).length;
   var seenY = rows.filter(function (r) { return first[r] && first[r] < today; }).length;
-  var k = Math.max(1, days(p.handout, today));
+  var k = Math.max(1, days(p.handout, today));                           // 渡した日の翌日が 1 日目（昨日までの目標は k−1 日ぶん）
   var goalY = today <= p.handout ? 0 : Math.min(n, Math.ceil(n * Math.min(1, (k - 1) / intro)));
   // 毎日 daily 語ずつ足す単語帳：昨日までの足す日（日曜など rest を除く）×daily＋前週の語全部（2026-09-19 渡辺）
-  if (bk.daily) goalY = today <= p.handout ? 0 : Math.min(n, n - tn + bk.daily * wcNewDays(bk, p.handout, addDays(today, -1)));
+  if (bk.daily) goalY = today <= p.handout ? 0 : Math.min(n, n - tn + wcDailyGoal(bk, p.handout, p.test, addDays(today, -1), tn));
   var behind = Math.max(0, goalY - seenY);
   var pred = testRows.reduce(function (a, r) { return a + (st[r] ? retr(Math.max(0, days(last[r], p.test)), st[r][0]) : 0); }, 0) / Math.max(1, testRows.length);
   var kv = el("div", "kv");
@@ -712,7 +712,8 @@ function bookBlock(bk, p, W, st, last, first, firsts, recs, today, q) {
   tb.appendChild(hr);
   for (var d = p.handout; d < p.test; d = addDays(d, 1)) {
     var a = ans[d] || 0, cls = d === today ? "today" : d > today ? "future" : (d > p.handout && !a ? "miss" : "");
-    var tr = el("tr", cls), tag = bk.daily ? (wcRest(bk, d) ? "復" : "新") : { intro: "新", review: "復", final: "総" }[wcPhase(p.handout, p.test, d).kind];
+    var ph = wcPhase(p.handout, p.test, d);
+    var tr = el("tr", cls), tag = ph.kind === "final" ? "総" : bk.daily ? (wcAddDay(bk, p.handout, p.test, d) ? "新" : "復") : { intro: "新", review: "復" }[ph.kind];
     [md(d).replace("（", "(").replace("）", ")"), tag, fst[d] || "", fst[d] ? fst[d] - (nw[d] || 0) : "", nw[d] || "", fst[d] ? pct(oks[d] / fst[d]) : "—"].forEach(function (v, i) {
       tr.appendChild(el("td", i === 1 ? "tag" : null, String(v)));
     });

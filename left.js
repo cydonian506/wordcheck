@@ -1,9 +1,13 @@
 // 今日の分の決め方と、今日の残り（ページと通知の service worker の両方で使う）
 //
-// 本人決定（2026-10-25）：新しい語はテストの前々日までの毎日に均等に割る（2026-09-17〜の「前半で出し切る」はやめた）。
-//   - 渡した日〜テストの前々日：今日までに出し終える数（範囲×経過日数÷その日数）からやった語を引いた数＋期限の語
-//   - テストの前日（と当日）：テスト範囲を全部 1 周（今日もうやった語は除く）＋期限の語
-//   WC_INTRO_RATIO で新しい語を出す日の割合を変えられる（1＝前々日まで全部、0.5＝前半だけ）
+// 本人決定（2026-10-25）：
+//   - 新しい語を足すのは「渡した日（＝前のテストの日）の翌日〜テストの前々日」だけ。休みの曜日・日付も除く。
+//     テストの前日に覚えた語は翌日のテストに間に合わず、テストの日に新しい語を入れると見直しの邪魔になるため
+//   - 毎日の量は単語帳ごとの規定量（計画の daily）。範囲は 規定量×足す日の数 で組んであるので、1 日の量＝規定量になる。
+//     範囲と足す日の数が合わない期間（足し方を変えた直後など）は、範囲÷足す日の数 に自動で合わせる
+//   - テストの前日：テスト範囲を全部 1 周（今日もうやった語は除く）＋期限の語
+//   - テストの日（＝次の期間を渡した日）：今日のテストの範囲（前週の範囲）を 1 周＋期限の語。新しい語は無し
+//   規定量の無い単語帳は、範囲を足す日に均等に割る（2026-09-17〜の「前半で出し切る」は 2026-10-25 にやめた）
 // snapshot = { handout, test, books: [{b, label, rows, t, daily}], bookOf: {行番号: b},
 //              fsrs: {行番号: [安定度, 難易度, 最後の日]}, plans: {b: {date, rows}}, pend: [学習ステップの途中の行番号（前の日のぶんも）], url }
 //   t はテスト範囲（次週）の行番号。古いデータで無ければ rows 全部を使う
@@ -16,12 +20,14 @@ function wcIso(d) { return d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).sl
 function wcDays(a, b) { return Math.round((new Date(b + "T00:00:00") - new Date(a + "T00:00:00")) / 86400000); }
 
 // 今日が期間のどこか。{kind: "intro"|"review"|"final", left: 新しい語を出す日の残り（今日を含む）, intro: その日数}
+// final の lap："test"＝テスト範囲（次週）を 1 周、"prev"＝渡した日（テストの日）に前週の範囲を 1 周
 function wcPhase(handout, test, today) {
-  if (wcDays(today, test) <= 1) return { kind: "final", left: 0 };
+  if (wcDays(today, test) <= 1) return { kind: "final", left: 0, lap: "test" };
+  if (handout && today <= handout) return { kind: "final", left: 0, lap: "prev" };
   if (!handout) return { kind: "intro", left: wcDays(today, test) - 1, intro: 0 };   // 古いデータ：前日まで均等
   var hw = Math.max(1, wcDays(handout, test) - 1);                         // 宿題の日数
   var intro = Math.max(1, Math.min(hw - 1, Math.ceil(hw * WC_INTRO_RATIO)));
-  var left = intro - Math.max(1, wcDays(handout, today)) + 1;              // 渡した日にやった分は 1 日目に数える
+  var left = intro - wcDays(handout, today) + 1;                           // 渡した日の翌日が 1 日目
   return left >= 1 ? { kind: "intro", left: left, intro: intro } : { kind: "review", left: 0 };
 }
 // 今日出す新しい語の数（final では使わない）。total＝範囲の語数
@@ -32,6 +38,14 @@ function wcFreshCount(unseen, phase, total) {
   if (!phase.intro || total == null) return Math.ceil(unseen / Math.max(1, phase.left));
   var k = phase.intro - phase.left + 1;                                     // 新しい語を出す日の何日目か
   return Math.max(0, Math.min(unseen, Math.ceil(total * k / phase.intro) - (total - unseen)));
+}
+// 1 周の対象の語（lap に合わせて）。rows＝期間の全語、t＝テスト範囲
+function wcLapBook(bk, lap) {
+  if (lap !== "prev") return bk;
+  var inT = {};
+  (bk.t || []).forEach(function (r) { inT[r] = 1; });
+  var prev = bk.rows.filter(function (r) { return !inT[r]; });
+  return { rows: prev, t: prev };
 }
 // 期限が来ているか
 function wcDue(st, today) { return st[2] !== today && wcDays(st[2], today) >= Math.max(1, Math.round(st[0])); }
@@ -59,22 +73,34 @@ function restLabel(rest) {
   if (s.join() === "0,6") return "（土日は復習だけ）";
   return "（" + s.map(function (i) { return "日月火水木金土".charAt(i) + "曜"; }).join("・") + "は復習だけ）";
 }
-// 渡した日〜day（含む）のうち新しい語を足す日の数
-function wcNewDays(bk, handout, day) {
-  var n = 0;
-  for (var i = 0; i <= wcDays(handout, day); i++) {
+// 新しい語を足す日か：渡した日の翌日〜テストの前々日、休みの曜日・日付を除く
+function wcAddDay(bk, handout, test, day) {
+  return day > handout && wcDays(day, test) >= 2 && !wcRest(bk, day);
+}
+// 渡した日の翌日〜day（含む）のうち新しい語を足す日の数。day を省くとテストの前々日まで（期間全体）
+function wcNewDays(bk, handout, test, day) {
+  var n = 0, end = day || test;
+  for (var i = 1; i <= wcDays(handout, end); i++) {
     var d = new Date(handout + "T00:00:00"); d.setDate(d.getDate() + i);
-    if (!wcRest(bk, wcIso(d))) n++;
+    if (wcAddDay(bk, handout, test, wcIso(d))) n++;
   }
   return n;
 }
+// 今日までに足し終える新しい語の数（テスト範囲 tn 語のうち）。規定量×足す日、範囲と合わなければ範囲÷足す日で割る
+function wcDailyGoal(bk, handout, test, day, tn) {
+  var all = wcNewDays(bk, handout, test), k = wcNewDays(bk, handout, test, day);
+  if (!all) return day > handout ? tn : 0;
+  var per = bk.daily && bk.daily * all >= tn ? bk.daily : tn / all;
+  return Math.min(tn, Math.ceil(per * k));
+}
 // carry（2026-10-24 渡辺）：休みの日も積み残し（前の範囲のやっていない語・もう出した日の分のやり残し）は出す。新しく足すのは休みの日以外だけ
 //   （前の版は休みの日に何も出さず、金曜の約 400 語が土曜に消えて見えた）
-function wcDailyRows(bk, fsrs, handout, today) {
+function wcDailyRows(bk, fsrs, handout, today, test) {
+  if (today <= handout || wcDays(today, test) <= 1) return [];           // テストの日・前日は新しい語を足さない
   if (wcRest(bk, today) && !bk.carry) return [];
   var t = bk.t || bk.rows, inT = {}, seenT = 0;
   t.forEach(function (r) { inT[r] = 1; if (fsrs[r]) seenT++; });
-  var room = Math.max(0, Math.min(t.length, bk.daily * wcNewDays(bk, handout, today)) - seenT);
+  var room = Math.max(0, wcDailyGoal(bk, handout, test, today, t.length) - seenT);
   var old = bk.rows.filter(function (r) { return !inT[r] && !fsrs[r]; });
   return old.concat(t.filter(function (r) { return !fsrs[r]; }).slice(0, room));
 }
@@ -84,8 +110,8 @@ function wcLeft(snap, today) {
   var fsrs = snap.fsrs || {}, out = [], phase = wcPhase(snap.handout, snap.test, today);
   (snap.books || []).forEach(function (bk) {
     var n, inFin = null;
-    if (phase.kind === "final" && !bk.daily) {   // 毎日足す単語帳は前日も足す（総復習にしない）
-      var fin = wcFinalRows(bk, fsrs, today);
+    if (phase.kind === "final") {                // 2026-10-25〜 毎日足す単語帳も前日・テストの日は 1 周（新しい語は足さない）
+      var fin = wcFinalRows(wcLapBook(bk, phase.lap), fsrs, today);
       inFin = {};
       fin.forEach(function (r) { inFin[r] = 1; });
       var due = 0;
@@ -96,7 +122,7 @@ function wcLeft(snap, today) {
       Object.keys(fsrs).forEach(function (row) { if (snap.bookOf[row] === bk.b && wcDue(fsrs[row], today)) d++; });
       var plan = (snap.plans || {})[bk.b], fresh;
       if (plan && plan.date === today) fresh = plan.rows.filter(function (r) { return !fsrs[r]; }).length;
-      else if (bk.daily && snap.handout) fresh = wcDailyRows(bk, fsrs, snap.handout, today).length;
+      else if (bk.daily && snap.handout) fresh = wcDailyRows(bk, fsrs, snap.handout, today, snap.test).length;
       else fresh = wcFreshCount(bk.rows.filter(function (r) { return !fsrs[r]; }).length, phase, bk.rows.length);
       n = Math.min(d, WC_REVIEW_MAX) + fresh;
     }

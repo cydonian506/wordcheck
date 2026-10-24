@@ -378,7 +378,7 @@ function dueCards(b) {
 }
 
 // ================================================================ 今日の分
-// 決め方は left.js（新しい語は前々日まで均等・テスト前日は範囲を 1 周）。新しい語はその日に初めて開いたときに
+// 決め方は left.js（新しい語は渡した日の翌日〜テストの前々日に規定量ずつ・前日とテストの日は範囲を 1 周）。新しい語はその日に初めて開いたときに
 // ランダムに決めて端末に残す
 function testRows(bk) { return bk.tn != null ? bk.words.slice(bk.words.length - bk.tn).map(function (w) { return w[5]; }) : bk.words.map(function (w) { return w[5]; }); }
 function testSet(bk) { var m = {}; testRows(bk).forEach(function (r) { m[r] = 1; }); return m; }
@@ -418,7 +418,7 @@ function todayPlan(bk) {
     var all = fsrsAll(), ph = phaseToday(), unseen = bk.words.filter(function (w) { return !all[w[5]]; }).map(function (w) { return w[5]; });
     // 毎日 daily 語ずつの単語帳は番号順に今日の分を決める（出す順番はランダム）
     pl = { rows: bk.daily && P.handout
-      ? shuffle(wcDailyRows({ rows: bk.words.map(function (w) { return w[5]; }), t: testRows(bk), daily: bk.daily, rest: bk.rest, carry: bk.carry }, all, P.handout, todayIso()))
+      ? shuffle(wcDailyRows({ rows: bk.words.map(function (w) { return w[5]; }), t: testRows(bk), daily: bk.daily, rest: bk.rest, carry: bk.carry }, all, P.handout, todayIso(), P.test))
       : ph.kind === "final" ? [] : shuffle(unseen).slice(0, wcFreshCount(unseen.length, ph, bk.words.length)) };
     if (sig) pl.sig = sig;
     store(key, pl);
@@ -438,8 +438,10 @@ function splitDeck(bk) {
   return out;
 }
 function baseDeck(bk) {
-  if (phaseToday().kind !== "final" || bk.daily) return dueCards(bk.b).concat(newToday(bk));   // 毎日足す単語帳は前日も足す
-  var fin = wcFinalRows({ rows: bk.words.map(function (w) { return w[5]; }), t: testRows(bk) }, fsrsAll(), todayIso()), inFin = {};
+  var ph = phaseToday();
+  if (ph.kind !== "final") return dueCards(bk.b).concat(newToday(bk));
+  // テストの前日はテスト範囲、テストの日（渡した日）は今日のテストの範囲（前週）を 1 周。新しい語は足さない（2026-10-25）
+  var fin = wcFinalRows(wcLapBook({ rows: bk.words.map(function (w) { return w[5]; }), t: testRows(bk) }, ph.lap), fsrsAll(), todayIso()), inFin = {};
   fin.forEach(function (r) { inFin[r] = 1; });
   return shuffle(fin.filter(function (r) { return INDEX[r]; }).map(function (r) { return INDEX[r]; }))
     .concat(dueCards(bk.b).filter(function (e) { return !inFin[e[5]]; }).slice(0, WC_FINAL_REVIEW_MAX));
