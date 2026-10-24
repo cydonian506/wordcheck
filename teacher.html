@@ -310,7 +310,7 @@ function quotaOf(c, sessions, today) {
   var books = cur.books.map(function (bk) {
     var rows = bk.words.map(function (w) { return String(w[0]); }), tn = bk.tn != null ? bk.tn : rows.length;
     rows.forEach(function (r) { bookOf[r] = bk.b; });
-    return { b: bk.b, label: bk.label, rows: rows, t: rows.slice(rows.length - tn), daily: bk.daily, rest: bk.rest };
+    return { b: bk.b, label: bk.label, rows: rows, t: rows.slice(rows.length - tn), daily: bk.daily, rest: bk.rest, carry: bk.carry };
   });
   var left = wcLeft({ handout: cur.handout, test: cur.test, books: books, bookOf: bookOf, fsrs: fsrs, plans: {}, pend: [] }, today);
   var done = {};

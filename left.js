@@ -68,8 +68,10 @@ function wcNewDays(bk, handout, day) {
   }
   return n;
 }
+// carry（2026-10-24 渡辺）：休みの日も積み残し（前の範囲のやっていない語・もう出した日の分のやり残し）は出す。新しく足すのは休みの日以外だけ
+//   （前の版は休みの日に何も出さず、金曜の約 400 語が土曜に消えて見えた）
 function wcDailyRows(bk, fsrs, handout, today) {
-  if (wcRest(bk, today)) return [];
+  if (wcRest(bk, today) && !bk.carry) return [];
   var t = bk.t || bk.rows, inT = {}, seenT = 0;
   t.forEach(function (r) { inT[r] = 1; if (fsrs[r]) seenT++; });
   var room = Math.max(0, Math.min(t.length, bk.daily * wcNewDays(bk, handout, today)) - seenT);
