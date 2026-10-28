@@ -15,7 +15,7 @@
   単語チェック（宿題の単語アプリ）
   - 期間の QR（?s=<期間ID>、7 文字目が p）：単語帳ごとに「今日の分」→ 単語だけ見て答える → タップで訳 → 4 つのボタンで評価。
     今日の分＝FSRS で期限が来た語（最大 100）＋まだやっていない範囲の語（残り÷テストまでの日数、範囲の中でランダム）。
-    終わったら「もっとやる」。その日の最初の 1 回だけが FSRS に効く（同じ日の周回は練習）。
+    その日の最初の 1 回だけが FSRS に効く（同じ日の周回は練習）。（「もっとやる」「テスト範囲だけやる」は 2026-10-29 にやめた）
     本人決定（2026-10-10）：ボタンと出し方を Anki に合わせる。もう一度＝Again・難しい＝Hard・正解＝Good・簡単＝Easy。
     新しい語は学習ステップ 1 分→10 分、忘れた語（復習で もう一度）は 10 分。ステップを全部 正解 で抜けるまで今日の分から外れない。
     ほかに出す語が無いときは、待たずに学習中の語を出す（Anki の「先に学習」）。フリックは 左＝もう一度・右＝正解。
@@ -283,7 +283,7 @@ if (PERIOD && !POINTER) {
   var CUR = store("cur:" + ME);
   if (CUR && CUR.s && CUR.k && CUR.s.slice(7, 13) > SID.slice(7, 13)) { SID = CUR.s; KEY = CUR.k; }
 }
-var WD = "日月火水木金土", REVIEW_MAX = 100, MORE = 20, WEAK_MAX = 30;
+var WD = "日月火水木金土", REVIEW_MAX = 100, WEAK_MAX = 30;
 // 本人決定（2026-10-10）：Anki の既定と同じ学習ステップ（分）。新しい語＝LEARN_STEPS、復習で もう一度 にした語＝RELEARN_STEPS。
 // ステップを全部 正解 で抜けるまで今日の分から外れない（前の版は ✕ のあと 1 回 ○ で抜けられたので、答えを見た直後に ○ にして終わっていた）
 var LEARN_STEPS = [1, 10], RELEARN_STEPS = [10];
@@ -468,19 +468,6 @@ function baseDeck(bk) {
   return shuffle(fin.filter(function (r) { return INDEX[r]; }).map(function (r) { return INDEX[r]; }))
     .concat(dueCards(bk.b, WC_FINAL_REVIEW_MAX + fin.length).filter(function (e) { return !inFin[e[5]]; }).slice(0, Math.max(0, WC_FINAL_REVIEW_MAX - revDone(bk.b))));
 }
-// もっとやる：まだやっていない語を MORE 語ずつ前倒し。全部やったら範囲からランダムに 50 語（練習）
-function moreDeck(bk) {
-  var all = fsrsAll(), pl = todayPlan(bk);
-  var unseen = bk.words.filter(function (w) { return !all[w[5]] && pl.rows.indexOf(w[5]) < 0; }).map(function (w) { return w[5]; });
-  if (unseen.length) {
-    var add = bk.daily ? shuffle(unseen.slice(0, MORE)) : shuffle(unseen).slice(0, MORE);   // 毎日足す単語帳は番号順に前倒し
-    pl.rows = pl.rows.concat(add); store(planKey(bk), pl);
-    return add.map(function (r) { return INDEX[r]; });
-  }
-  return shuffle(bk.words.slice()).slice(0, 50);
-}
-// テスト範囲：今週のテスト範囲の語を全部（生徒要望 2026-10-03：今日の分とは別に、いつでも範囲だけ見直したい）
-function testDeck(bk) { return shuffle(testRows(bk).filter(function (r) { return INDEX[r]; }).map(function (r) { return INDEX[r]; })); }
 function learned(bk) { var all = fsrsAll(); return bk.words.filter(function (w) { return all[w[5]]; }).length; }
 
 // ================================================================ 一覧
@@ -526,12 +513,8 @@ function hub() {
       sub.appendChild(b);
     });
     card.appendChild(sub);
-    var more = el("button", "more", "もっとやる");
-    more.onclick = function () { begin(bk, "more", moreDeck(bk), 1); };
-    card.appendChild(more);
-    var tn = testRows(bk).length, tb = el("button", "more", "テスト範囲だけやる（" + tn + " 語）");
-    tb.onclick = function () { begin(bk, "test", testDeck(bk), 1); };
-    if (tn) card.appendChild(tb);
+    // 本人指示（2026-10-29）：「もっとやる」「テスト範囲だけやる」はやめた。使っていたのは越智だけで、
+    // 新しい語が出ない不具合の回避だった。テスト範囲はテストの前日に今日の分で 1 周する
     box.appendChild(card);
     total += deck.length; per.push(deckName(bk) + " " + deck.length + " 語");
   });
@@ -539,7 +522,7 @@ function hub() {
   $("leftNum").innerHTML = "";
   if (total) { $("leftNum").textContent = total; $("leftNum").appendChild(el("small", null, "語")); }
   else $("leftNum").textContent = "終わり！";
-  $("leftPer").textContent = total ? per.join("・") : "もっとやってもOK";
+  $("leftPer").textContent = total ? per.join("・") : "今日はここまで";
   saveState(); hubNote();
 }
 // 設定画面
