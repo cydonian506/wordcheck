@@ -338,8 +338,19 @@ function fsrsAll() { return store(fsrsKey()) || {}; }
 // 同じ日なら配られたほうを使う：紙の週テストの誤答（2026-10-25〜）はテストの日に「もう一度」として
 // 配られたデータにだけ入るので、その日アプリで ○ にしていても誤答が勝つように。
 // その日の最初の回答は先に記録サーバーへ届くので、同じ日付の配られた状態は端末のものを含んでいる
+// 本人指示（2026-10-29 越智）：履歴をリセットした生徒（since＝リセットした日）は、端末に残ったそれより前の記録を捨てる。
+// 残っていると、リセット前にやった語が「もうやった語」に数えられ、毎日の新しい語が出なかった
 function fsrsSeed() {
   var mine = fsrsAll(), cards = (P && P.cards) || {};
+  if (P && P.since) {
+    var h = histAll();
+    Object.keys(mine).forEach(function (row) { if (mine[row][2] < P.since) delete mine[row]; });
+    Object.keys(h).forEach(function (row) {
+      h[row] = h[row].filter(function (x) { return x[0] >= P.since; });
+      if (!h[row].length) delete h[row];
+    });
+    store("hist:" + ME, h);
+  }
   Object.keys(cards).forEach(function (row) {
     var c = cards[row], seed = [c[5], c[6], c[7]];
     if (!mine[row] || mine[row][2] <= seed[2]) mine[row] = seed;
