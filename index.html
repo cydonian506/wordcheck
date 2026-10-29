@@ -207,23 +207,23 @@ button.w.on .t{color:var(--ng)}
 
 <div id="hub">
  <div class="hubHead"><div class="big" id="hubBig"></div><div class="small" id="hubSmall"></div></div>
- <div class="left" id="leftBox"><div class="lab">今日の残り</div><div class="num" id="leftNum"></div><div class="per" id="leftPer"></div></div>
- <div class="left sensei" id="senseiBox" style="display:none"><div class="lab">先生も毎日やってる（今日）</div><div class="num" id="senseiNum"></div><div class="per" id="senseiPer"></div></div>
+ <div class="left" id="leftBox"><div class="lab">TODAY　本日の残り</div><div class="num" id="leftNum"></div><div class="per" id="leftPer"></div></div>
+ <div class="left sensei" id="senseiBox" style="display:none"><div class="lab">INSTRUCTOR　講師の本日実績</div><div class="num" id="senseiNum"></div><div class="per" id="senseiPer"></div></div>
  <button id="hubNote"></button>
  <div id="books"></div>
- <button id="fbLink">おかしな所・不具合を先生に送る</button>
+ <button id="fbLink">不具合を報告</button>
 </div>
 
 <div id="settings">
- <div class="sec"><h2>毎日の通知</h2><div id="notify"></div></div>
+ <div class="sec"><h2>日次通知</h2><div id="notify"></div></div>
 </div>
 
 <div id="fb">
  <div class="sec">
-  <h2>おかしな所・不具合を先生に送る</h2>
+  <h2>不具合を報告</h2>
   <div id="fbOpts"></div>
-  <textarea id="fbText" maxlength="200" placeholder="どの画面で何が起きたか（200 字まで。書かなくても送れる）"></textarea>
-  <div class="note">名前・電話番号・メールアドレスは書かないでね。開いている単語帳・画面・端末の種類は自動で付く</div>
+  <textarea id="fbText" maxlength="200" placeholder="発生した画面と症状（200 字以内・空欄可）"></textarea>
+  <div class="note">氏名・電話番号・メールアドレスは記入しない。単語帳・画面・端末の種類は自動で添付</div>
   <button class="go" id="fbSend">送る</button>
   <div class="note" id="fbNote"></div>
  </div>
@@ -233,7 +233,7 @@ button.w.on .t{color:var(--ng)}
 
 <div id="swipe">
  <div id="stage"></div>
- <div class="hint"><span id="hintL">← ミス</span><span id="hintR">覚えてた →</span></div>
+ <div class="hint"><span id="hintL">← 誤答</span><span id="hintR">正答 →</span></div>
  <div class="grades">
   <button id="g1"><span class="iv"></span><span class="lb">もう一度</span></button>
   <button id="g2"><span class="iv"></span><span class="lb">難しい</span></button>
@@ -242,9 +242,9 @@ button.w.on .t{color:var(--ng)}
  </div>
  <div class="keys" id="keys"></div>
  <div class="btns">
-  <button class="round" id="bng" aria-label="ミス">✕</button>
+  <button class="round" id="bng" aria-label="誤答">✕</button>
   <button class="round" id="bundo" aria-label="ひとつ戻す">↶</button>
-  <button class="round" id="bok" aria-label="覚えてた">○</button>
+  <button class="round" id="bok" aria-label="正答">○</button>
  </div>
 </div>
 
@@ -253,7 +253,7 @@ button.w.on .t{color:var(--ng)}
  <div class="again">
   <button class="pill" id="againMiss"></button>
   <button class="pill" id="againAll">もう一周</button>
-  <button class="pill" id="toHub">一覧にもどる</button>
+  <button class="pill" id="toHub">一覧へ</button>
  </div>
  <p class="lead" id="listLead"></p>
  <div id="list"></div>
@@ -263,7 +263,7 @@ button.w.on .t{color:var(--ng)}
  <div class="result"><div class="big"><span id="repScore">0</span><small id="repOutof"></small></div><div class="sub" id="repSub"></div></div>
  <p class="lead">解答用紙で✓を付けた問（間違えた問）を押して赤にする。もう一度押すと戻る。</p>
  <div id="repList"></div>
- <button class="pill" id="repSend">この内容で先生に送る</button>
+ <button class="pill" id="repSend">この内容で送信</button>
  <div id="repNote"></div>
 </div>
 
@@ -489,23 +489,23 @@ function hub() {
   P.books.forEach(function (bk) { if (!bk.daily) bk.words.forEach(function (w) { if (!fa[w[5]]) behind++; }); });
   var allDaily = daily.length && daily.length === P.books.length, rest = daily.every(function (bk) { return wcRest(bk, todayIso()); });   // 全部が休みの曜日のときだけ「新しい語は無し」
   $("hubSmall").textContent = (ph.kind !== "final" || allDaily) && daily.length
-    ? (rest ? "今日は" + "日月火水木金土".charAt(new Date(todayIso() + "T00:00:00").getDay()) + "曜。新しい語は無し、復習だけ。"
-            : daily.map(function (bk) { return deckName(bk) + " " + bk.daily + " 語" + restLabel(bk.rest); }).join("・") + "ずつ毎日増える。")
-      + "毎日「今日の分」を終わらせよう"
-    : ph.kind === "final" ? (days(todayIso(), P.test) === 1 ? "明日はテスト。今日はテスト範囲を全部 1 周しよう" : "テスト範囲を全部 1 周しよう")
-    : ph.kind === "review" ? (behind ? "まだやっていない語が " + behind + " 語。今日中に追いつこう" : "新しい語は出し切った。今日は復習の日")
-    : "新しい語は あと " + ph.left + " 日で出し切る。毎日「今日の分」を終わらせよう";
+    ? (rest ? "本日" + "日月火水木金土".charAt(new Date(todayIso() + "T00:00:00").getDay()) + "曜、新出なし・復習のみ。"
+            : daily.map(function (bk) { return deckName(bk) + " " + bk.daily + " 語" + restLabel(bk.rest); }).join("・") + "／日 で新出を追加。")
+      + "日次ノルマの消化で計画どおり進行"
+    : ph.kind === "final" ? (days(todayIso(), P.test) === 1 ? "テスト前日。範囲を全数 1 周" : "テスト範囲を全数 1 周")
+    : ph.kind === "review" ? (behind ? "未着手 " + behind + " 語。本日中に回収" : "新出は配分済み。本日は復習")
+    : "新出の配分 残り " + ph.left + " 日。日次ノルマの消化で計画どおり進行";
   var box = $("books"), total = 0, per = []; box.innerHTML = "";
   P.books.forEach(function (bk) {
     var deck = todayDeck(bk), n = bk.words.length, k = learned(bk), card = el("div", "book");
     card.appendChild(el("div", "name", bk.label));
     card.appendChild(el("div", "range", bk.range));
-    card.appendChild(el("div", "learned", "範囲のうち やった語 " + k + " / " + n));
+    card.appendChild(el("div", "learned", "範囲の着手 " + k + " / " + n));
     var lb = el("div", "lbar"), fill = el("div"); fill.style.width = (n ? k / n * 100 : 0) + "%"; lb.appendChild(fill); card.appendChild(lb);
     // 生徒要望（2026-09-26）：今日の分のうち何語が今週のテストに出るかを出す
     var ts = testSet(bk), tcount = deck.filter(function (w) { return ts[w[5]]; }).length;
-    if (deck.length) card.appendChild(el("div", "tnote", "うち テスト範囲 " + tcount + " 語"));
-    var go = el("button", "go" + (deck.length ? "" : " done"), deck.length ? "今日の分　" + deck.length + " 語" : "今日の分は終わり");
+    if (deck.length) card.appendChild(el("div", "tnote", "うちテスト範囲 " + tcount + " 語"));
+    var go = el("button", "go" + (deck.length ? "" : " done"), deck.length ? "本日分　" + deck.length + " 語" : "本日分 完了");
     if (deck.length) go.onclick = function () { begin(bk, "today", todayDeck(bk), 1); };
     card.appendChild(go);
     var sp = splitDeck(bk), sub = el("div", "sub");
@@ -524,8 +524,8 @@ function hub() {
   $("leftBox").classList.toggle("zero", !total);
   $("leftNum").innerHTML = "";
   if (total) { $("leftNum").textContent = total; $("leftNum").appendChild(el("small", null, "語")); }
-  else $("leftNum").textContent = "終わり！";
-  $("leftPer").textContent = total ? per.join("・") : "今日はここまで";
+  else $("leftNum").textContent = "CLEAR";
+  $("leftPer").textContent = total ? per.join("・") : "本日分 完了";
   saveState(); hubNote(); senseiBox();
 }
 // 先生の進み具合（本人指示 2026-10-29）。先生も同じアプリでやっている。数は通知サーバーが先生の記録から数える
@@ -541,9 +541,9 @@ function senseiBox() {
     $("senseiNum").innerHTML = "";
     $("senseiNum").textContent = n; $("senseiNum").appendChild(el("small", null, "語"));
     var per = [];
-    if (x.left && x.left.d === today) per.push(x.left.n ? "残り " + x.left.n + " 語" : "今日の分は終わり");
+    if (x.left && x.left.d === today) per.push(x.left.n ? "残り " + x.left.n + " 語" : "本日分 完了");
     if (streak) per.push(streak + " 日連続");
-    per.push("この 7 日で " + week + " 語");
+    per.push("直近 7 日 " + week + " 語");
     $("senseiPer").textContent = per.join("・");
     $("senseiBox").style.display = "";
   }).catch(function () { senseiAt = 0; });
@@ -566,22 +566,22 @@ function fbCtx() {
            dev: (isIOS() ? "iOS" : /Android/.test(navigator.userAgent) ? "Android" : "PC") + (standalone() ? "・ホーム画面" : "") };
 }
 $("fbLink").onclick = function () {
-  screen("fb"); $("title").textContent = "不具合を送る"; $("count").textContent = "";
+  screen("fb"); $("title").textContent = "不具合を報告"; $("count").textContent = "";
   var box = $("fbOpts"); box.innerHTML = "";
   FB_KINDS.forEach(function (k) {
     var lb = el("label"), r = el("input"); r.type = "radio"; r.name = "fbk"; r.value = k[0];
     lb.appendChild(r); lb.appendChild(document.createTextNode(k[1])); box.appendChild(lb);
   });
-  $("fbText").value = ""; $("fbNote").textContent = ""; $("fbSend").disabled = false; $("fbSend").textContent = "送る";
+  $("fbText").value = ""; $("fbNote").textContent = ""; $("fbSend").disabled = false; $("fbSend").textContent = "送信";
 };
 $("fbSend").onclick = function () {
   var r = document.querySelector("input[name=fbk]:checked");
-  if (!r) { $("fbNote").textContent = "上から 1 つ選んでね"; return; }
+  if (!r) { $("fbNote").textContent = "種類を選択"; return; }
   var body = { c: ME, p: SID, k: r.value, x: $("fbText").value.trim().slice(0, 200), ctx: fbCtx() };
   store(PENDING, pending().concat([{ t: Date.now() + Math.random(), to: "f", body: body }]));
   flush();
-  $("fbSend").disabled = true; $("fbSend").textContent = "送った";
-  $("fbNote").textContent = "ありがとう。電波が悪いときは、次に開いたときに送り直す";
+  $("fbSend").disabled = true; $("fbSend").textContent = "送信済み";
+  $("fbNote").textContent = "受付完了。圏外の場合は次回起動時に再送";
 };
 
 // ================================================================ 自分の記録
@@ -650,18 +650,18 @@ function stats() {
   while (active[iso(d0)]) { streak++; d0.setDate(d0.getDate() - 1); }
   var s1 = el("div", "sec"); s1.appendChild(el("h2", null, "連続"));
   var sn = el("div", "streak", String(streak)); sn.appendChild(el("small", null, "日")); s1.appendChild(sn);
-  s1.appendChild(el("div", "sub", active[today] ? "今日もやった" : streak ? "今日やると " + (streak + 1) + " 日" : "今日から始めよう"));
+  s1.appendChild(el("div", "sub", active[today] ? "本日 実施済み" : streak ? "本日実施で " + (streak + 1) + " 日" : "記録なし"));
   box.appendChild(s1);
   // テスト範囲の仕上がり
-  var s2 = el("div", "sec"); s2.appendChild(el("h2", null, "テスト範囲の仕上がり（" + md(P.test) + "）"));
+  var s2 = el("div", "sec"); s2.appendChild(el("h2", null, "テスト範囲の完成度（" + md(P.test) + "）"));
   P.books.forEach(function (bk) {
     var rows = testRows(bk), done = 0, sum = 0;
     rows.forEach(function (r) { var st = fa[r]; if (st) { done++; sum += retr(Math.max(0, days(st[2], P.test)), st[0]); } });
     var f = el("div", "fin"), a = el("div", "row");
-    a.appendChild(el("span", null, bk.label)); a.appendChild(el("span", null, "やった語 " + done + " / " + rows.length));
+    a.appendChild(el("span", null, bk.label)); a.appendChild(el("span", null, "着手 " + done + " / " + rows.length));
     f.appendChild(a);
     var lb = el("div", "lbar"), fill = el("div"); fill.style.width = (rows.length ? done / rows.length * 100 : 0) + "%"; lb.appendChild(fill); f.appendChild(lb);
-    f.appendChild(el("div", "sub", "テストの日に覚えていそう 約 " + (rows.length ? Math.round(sum / rows.length * 100) : 0) + "%（まだの語は 0 で数える）"));
+    f.appendChild(el("div", "sub", "テスト当日の推定保持率 " + (rows.length ? Math.round(sum / rows.length * 100) : 0) + "%（未着手は 0 として算出）"));
     s2.appendChild(f);
   });
   box.appendChild(s2);
@@ -684,7 +684,7 @@ function stats() {
     tb.appendChild(tr);
   }
   s3.appendChild(tb);
-  s3.appendChild(el("div", "sub", "回答＝やった数（何周も含む）、語＝その日はじめて答えた語、○率はその 1 回目。赤＝やっていない日"));
+  s3.appendChild(el("div", "sub", "回答＝総回答数（周回含む）、語＝その日の初回回答の語数、○率＝初回の正答率。赤＝未実施日"));
   box.appendChild(s3);
   // 苦手語（✕ のある語。今忘れていそうな順）
   P.books.forEach(function (bk) {
@@ -699,8 +699,8 @@ function stats() {
     list.sort(function (a, b) { return b.ng - a.ng || a.r - b.r; });
     list = list.slice(0, WEAK_MAX);
     var s4 = el("div", "sec"); s4.appendChild(el("h2", null, "苦手語　" + bk.label));
-    if (!list.length) { s4.appendChild(el("div", "sub", "まだ無い")); box.appendChild(s4); return; }
-    s4.appendChild(el("div", "sub", "ミスしたことのある語。タップで意味"));
+    if (!list.length) { s4.appendChild(el("div", "sub", "該当なし")); box.appendChild(s4); return; }
+    s4.appendChild(el("div", "sub", "誤答履歴のある語。タップで訳を表示"));
     var g = el("div", "weak");
     list.forEach(function (x) {
       var b = el("button", "w");
@@ -712,7 +712,7 @@ function stats() {
       g.appendChild(b);
     });
     s4.appendChild(g);
-    var go = el("button", "go", "苦手語だけやる（" + list.length + " 語）");
+    var go = el("button", "go", "苦手語のみ（" + list.length + " 語）");
     go.onclick = function () { begin(bk, "weak", shuffle(list.map(function (x) { return x.e; })), 1); };
     s4.appendChild(go);
     box.appendChild(s4);
@@ -730,9 +730,9 @@ function begin(bk, kind, deck, round) {
   // 前の回で学習中のまま終わった語は、その続きから（出す時刻も守る。ほかに出す語が無ければ待たずに出す）
   if (PERIOD) { var pd = pendAll(); deck.forEach(function (w, k) { if (pd[w[5]]) S.lst[k] = pendState(pd[w[5]]); }); }
   $("swipe").classList.toggle("anki", !!PERIOD);
-  $("keys").textContent = PERIOD ? "キーボード：Space めくる　1〜4 評価　Z 戻す" : "キーボード：Space めくる　← ミス　→ 覚えてた　Z 戻す";
-  $("hintL").textContent = PERIOD ? "← もう一度" : "← ミス"; $("hintR").textContent = PERIOD ? "正解 →" : "覚えてた →";
-  var names = { today: "今日の分", more: "もっとやる", miss: "ミスだけ", again: "もう一周", weak: "苦手語", test: "テスト範囲", "new": "今日の分・新規", review: "今日の分・復習" };
+  $("keys").textContent = PERIOD ? "キーボード：Space めくる　1〜4 評価　Z 戻す" : "キーボード：Space めくる　← 誤答　→ 正答　Z 戻す";
+  $("hintL").textContent = PERIOD ? "← もう一度" : "← 誤答"; $("hintR").textContent = PERIOD ? "正解 →" : "正答 →";
+  var names = { today: "本日分", more: "追加", miss: "誤答のみ", again: "再周回", weak: "苦手語", test: "テスト範囲", "new": "本日分・新規", review: "本日分・復習" };
   $("title").textContent = (bk.label || "") + "　" + names[kind] + (round > 1 ? "　" + round + "周目" : "");
   screen("swipe"); render();
 }
@@ -746,7 +746,7 @@ function counts() {
 }
 function progress() {
   var n = S.deck.length, c = counts();
-  $("count").textContent = PERIOD ? c[0] + " / " + n + (S.i >= S.deck.length ? "　" + (S.idx.length - S.i) + " 語のこり" : "")
+  $("count").textContent = PERIOD ? c[0] + " / " + n + (S.i >= S.deck.length ? "　" + (S.idx.length - S.i) + " 語 残り" : "")
                                   : Math.min(S.i + 1, n) + " / " + n;
   $("barOk").style.width = (c[0] / n * 100) + "%"; $("barNg").style.width = (c[1] / n * 100) + "%";
   $("nOk").textContent = "○ " + c[0]; $("nNg").textContent = "✕ " + c[1];
@@ -769,7 +769,7 @@ function render() {
   card.appendChild(el("div", "glow gng")); card.appendChild(el("div", "glow gok"));
   card.appendChild(el("div", "mark mng", "✕")); card.appendChild(el("div", "mark mok", "○"));
   var tags = [];
-  if (PERIOD && !fsrsAll()[w[5]]) tags.push(["first", "はじめて"]);
+  if (PERIOD && !fsrsAll()[w[5]]) tags.push(["first", "NEW"]);
   // 生徒要望（2026-09-26）：今週のテストに出る語はカードで分かるようにする（デッキは分けない）
   if (PERIOD && S.test && S.test[w[5]]) tags.push(["test", "テスト範囲"]);
   if (tags.length) {
@@ -784,7 +784,7 @@ function render() {
   if (showEx(w)) card.appendChild(hlInto(el("div", "ex"), w[6], w[8]));
   var back = el("div", "back"); card.appendChild(back);
   S.flipped = false; S.shownAt = Date.now(); S.flipAt = 0;
-  if (PERIOD) back.appendChild(el("div", "tapHint", "タップで答え")); else flip(card, back);
+  if (PERIOD) back.appendChild(el("div", "tapHint", "TAP TO REVEAL")); else flip(card, back);
   stage.appendChild(card); setButtons(); fitCard(card);
   var sx = null, dx = 0;
   card.onpointerdown = function (e) { sx = e.clientX; dx = 0; try { card.setPointerCapture(e.pointerId); } catch (err) {} card.style.transition = "none"; };
@@ -942,18 +942,18 @@ function showScore() {
   if (PERIOD) {
     var fr = firstRes(), ok1 = fr.filter(function (x) { return !S.res[x[1]]; }).length;
     $("score").textContent = "○ " + ok1; $("outof").textContent = "/ " + S.deck.length;
-    $("resSub").textContent = ok1 === S.deck.length ? "全部 1 回で ○" : "1 回目の ○。もう一度 にした " + (S.deck.length - ok1) + " 語も全部 覚え直した";
+    $("resSub").textContent = ok1 === S.deck.length ? "全問 初回正答" : "初回正答数。もう一度 の " + (S.deck.length - ok1) + " 語も再学習完了";
     return;
   }
   var n = S.idx.length, ok = S.res.filter(function (x) { return x === false; }).length;
   $("score").textContent = "○ " + ok; $("outof").textContent = "/ " + n;
-  $("resSub").textContent = ok === n ? "全部 ○" : "✕ " + (n - ok) + " 語";
+  $("resSub").textContent = ok === n ? "全問正答" : "誤答 " + (n - ok) + " 語";
 }
 function finish() {
   screen("review"); $("count").textContent = "結果"; showScore(); refreshAgain();
   $("againAll").style.display = PERIOD ? "block" : "none";
-  $("toHub").textContent = PERIOD ? "一覧にもどる" : "送信して終わる";
-  $("listLead").textContent = PERIOD ? "赤＝1 回目で もう一度 にした語（あとで学習ステップを抜けたので今日の分は終わり）。押しまちがいは回の途中の ↶ で直す" : "ミスした語は赤。押しまちがいはタップで直せる";
+  $("toHub").textContent = PERIOD ? "一覧へ" : "送信して終了";
+  $("listLead").textContent = PERIOD ? "赤＝初回で もう一度 にした語（学習ステップは通過済み）。誤操作は回の途中に ↶ で修正" : "赤＝誤答。誤操作はタップで修正";
   var list = $("list"); list.innerHTML = "";
   if (PERIOD) {
     firstRes().forEach(function (x) {
@@ -977,13 +977,13 @@ function finish() {
     list.appendChild(b);
   });
 }
-function refreshAgain() { var m = missIdx(); $("againMiss").style.display = "none"; $("againMiss").textContent = "ミスだけもう一周（" + m.length + "語）"; }
+function refreshAgain() { var m = missIdx(); $("againMiss").style.display = "none"; $("againMiss").textContent = "誤答のみ再周回（" + m.length + " 語）"; }
 $("againMiss").onclick = function () {
   var s = S, m = missIdx().map(function (wi) { return s.deck[wi]; }); commit();
   begin(s.book, "miss", m, s.round + 1);
 };
 $("againAll").onclick = function () { var s = S; commit(); begin(s.book, "again", shuffle(s.deck.slice()), s.round + 1); };
-$("toHub").onclick = function () { commit(); if (PERIOD) hub(); else show("送信しました。おつかれさま"); };
+$("toHub").onclick = function () { commit(); if (PERIOD) hub(); else show("送信完了"); };
 
 // ================================================================ ホーム画面・毎日の通知
 // 新しい期間が出ていたら切り替える（一覧を見ているときだけ。次に開いたときは端末の記録から直接）
@@ -1032,7 +1032,7 @@ function hubNote() {
   var b = $("hubNote"), ok = "serviceWorker" in navigator && ("PushManager" in window || (isIOS() && !standalone()));
   var on = store("push:on") && window.Notification && Notification.permission === "granted";
   b.style.display = PERIOD && ok && !on ? "block" : "none";
-  b.textContent = "毎日、残りの数を通知で受け取る →";
+  b.textContent = "日次通知を設定 →";
   b.onclick = function () { $("gear").onclick(); };
 }
 function notifyBox() {
@@ -1040,13 +1040,13 @@ function notifyBox() {
   if (!PERIOD || !("serviceWorker" in navigator)) { box.textContent = "この端末では通知を使えない"; return; }
   if (!("PushManager" in window)) {
     if (isIOS() && !standalone()) {
-      box.textContent = "ホーム画面に追加すると、毎日好きな時刻に残りの数が通知で届く（下の共有ボタン →「ホーム画面に追加」→ ホーム画面のアイコンから開く）";
+      box.textContent = "ホーム画面に追加すると、指定時刻に残り数を通知（共有ボタン →「ホーム画面に追加」→ アイコンから起動）";
     } else box.textContent = "この端末では通知を使えない";
     return;
   }
-  if (Notification.permission === "denied") { box.textContent = "通知がオフになっている。設定アプリ →「通知」→「単語チェック」でオンにしてね"; return; }
+  if (Notification.permission === "denied") { box.textContent = "通知 OFF。設定 →「通知」→「単語チェック」で ON"; return; }
   var on = store("push:on") && Notification.permission === "granted";
-  box.appendChild(el("div", null, on ? "残りの数を毎日通知中（終わった日は来ない）" : "残りの数を毎日、通知で受け取れる"));
+  box.appendChild(el("div", null, on ? "日次通知 ON（完了した日は送信しない）" : "日次通知 OFF"));
   // 時刻（30 分刻み）。オンのときは変えたらすぐ登録し直す
   var line = el("div", "tline", "毎日"), sel = el("select"), cur = pushTime();
   for (var h = 5; h < 24; h++) ["00", "30"].forEach(function (m) {
@@ -1054,13 +1054,13 @@ function notifyBox() {
   });
   sel.onchange = function () {
     var prev = pushTime(); store("push:time", sel.value);
-    if (on) pushOn().then(function () { note.textContent = "変更した"; }, function () { store("push:time", prev); sel.value = prev; note.textContent = "変更できなかった。電波のいい所でもう一回"; });
+    if (on) pushOn().then(function () { note.textContent = "変更済み"; }, function () { store("push:time", prev); sel.value = prev; note.textContent = "変更失敗。通信状態を確認して再試行"; });
   };
   var note = el("span"); note.style.marginLeft = "6px"; note.style.fontSize = "13px"; note.style.color = "var(--sub)";
   line.appendChild(sel); line.appendChild(document.createTextNode("に通知")); line.appendChild(note);
   box.appendChild(line);
-  var b = el("button", null, on ? "通知をやめる" : "通知をオンにする");
-  b.onclick = function () { b.disabled = true; (on ? pushOff() : pushOn()).then(notifyBox, function () { b.disabled = false; b.textContent = "うまくいかなかった。もう一回"; }); };
+  var b = el("button", null, on ? "通知を OFF" : "通知を ON");
+  b.onclick = function () { b.disabled = true; (on ? pushOff() : pushOn()).then(notifyBox, function () { b.disabled = false; b.textContent = "失敗。再試行"; }); };
   box.appendChild(b);
 }
 function pushTime() { var t = store("push:time"); return /^\d\d:[03]0$/.test(t || "") ? t : DEFAULT_TIME; }
@@ -1167,7 +1167,7 @@ function startReport(d) {
       if (sel[w[0]]) delete sel[w[0]]; else sel[w[0]] = 1;
       b.classList.toggle("on", !!sel[w[0]]);
       store(key, Object.keys(sel).map(Number)); paint();
-      $("repNote").textContent = store("sent:" + SID) ? "送ったあとに変えた。もう一度送ってね" : "";
+      $("repNote").textContent = store("sent:" + SID) ? "送信後に変更あり。再送が必要" : "";
     };
     box.appendChild(b);
   });
@@ -1176,9 +1176,9 @@ function startReport(d) {
     if (!confirm((n - miss.length) + " / " + n + " 点（間違い " + miss.length + " 問）で送る？")) return;
     store(PENDING, pending().concat([{ t: Date.now() + Math.random(), body: { s: SID, miss: miss } }]));
     flush(); store("sent:" + SID, 1);
-    $("repNote").textContent = "送った。直したいときは押し直して、もう一度送ればよい";
+    $("repNote").textContent = "送信完了。修正は押し直して再送";
   };
-  if (store("sent:" + SID)) $("repNote").textContent = "送信済み。直したいときは押し直して、もう一度送ればよい";
+  if (store("sent:" + SID)) $("repNote").textContent = "送信済み。修正は押し直して再送";
   paint(); screen("report");
 }
 function loadLocal(id, key) {
@@ -1194,14 +1194,14 @@ function loadLocal(id, key) {
 }
 function loadApi() { return fetch(API + "?s=" + SID).then(function (r) { return r.json(); }).then(function (d) { if (!d.ok) throw new Error("nf"); return d; }); }
 if (!(POINTER ? /^[0-9a-z]{17}$/ : /^[0-9a-z]{23}$/).test(SID)) {   // 最新の置き場の ID は日付が無いので 17 文字
-  show("この QR のデータが見つからない。先生に知らせてね");
+  show("この QR のデータなし。講師に連絡");
 } else {
   screen("msg");
   (POINTER ? loadLocal(SID, KEY).then(function (x) { SID = x.s; KEY = x.k; }) : Promise.resolve())
     .then(function () { return KEY ? loadLocal(SID, KEY).catch(function (e) { if (PERIOD) throw e; return loadApi(); }) : loadApi(); })
     .then(function (d) {
       if (PERIOD) {
-        if (!d.books) { show("古い QR です。先生に新しい QR をもらってね"); return; }
+        if (!d.books) { show("旧版の QR。講師から新しい QR を受け取る"); return; }
         P = d;
         if (d.ptr) store("ptr:" + ME, d.ptr);           // 前の期間のデータが消えても、ここから最新へ進める
         store("ptr:tried", null);
@@ -1220,11 +1220,11 @@ if (!(POINTER ? /^[0-9a-z]{17}$/ : /^[0-9a-z]{23}$/).test(SID)) {   // 最新の
       if (e && e.message === "nf" && ptr && !store("ptr:tried")) {
         store("ptr:tried", 1);
         loadLocal(ptr[0], ptr[1]).then(function (x) { store("cur:" + ME, { s: x.s, k: x.k }); location.reload(); })
-          .catch(function () { store("ptr:tried", null); show("この QR のデータが見つからない。先生に知らせてね"); });
+          .catch(function () { store("ptr:tried", null); show("この QR のデータなし。講師に連絡"); });
         return;
       }
       store("ptr:tried", null);
-      show(e && e.message === "nf" ? "この QR のデータが見つからない。先生に知らせてね" : "読み込めなかった。電波のいい所でもう一回開いてね");
+      show(e && e.message === "nf" ? "この QR のデータなし。講師に連絡" : "読み込み失敗。通信状態を確認して再起動");
     });
 }
 </script>

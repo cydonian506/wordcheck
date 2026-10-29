@@ -60,11 +60,11 @@ self.addEventListener("push", function (e) {
     return;
   }
   e.waitUntil(readState().then(function (snap) {
-    var body = "今日の単語チェックをやろう", total = 0;
+    var body = "本日分 未着手", total = 0;
     if (snap) {
       var left = wcLeft(snap);
       total = left.reduce(function (a, x) { return a + x.n; }, 0);
-      body = total ? wcText(left) : "今日の分は終わり。もっとやってもOK";
+      body = total ? wcText(left) : "本日分 完了";
     }
     if (self.navigator.setAppBadge) {
       (total ? self.navigator.setAppBadge(total) : self.navigator.clearAppBadge()).catch(function () {});

@@ -140,5 +140,5 @@ function wcLeft(snap, today) {
 // 通知の文面：「今日の残り　英 42 語・古文 12 語」
 function wcText(left) {
   var parts = left.filter(function (x) { return x.n > 0; }).map(function (x) { return (x.b === "k" ? "古文 " : "英 ") + x.n + " 語"; });
-  return parts.length ? "今日の残り　" + parts.join("・") : "";
+  return parts.length ? "本日の残り　" + parts.join("・") : "";
 }
