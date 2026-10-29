@@ -46,11 +46,21 @@ header{padding:calc(12px + env(safe-area-inset-top)) 18px 6px}
 #title{flex:1;font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #count{font-size:15px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--sub)}
 
-/* 進み具合：○＝緑が左から、✕＝赤が右から（本人希望 2026-09-16） */
+/* 進み具合：○＝緑が左から、✕＝赤が右から（本人希望 2026-09-16）。
+   2026-10-29 本人指摘「初回で ○ にしたのに ✕ になる」→ 学習ステップ途中の語を状態で分ける：
+   同日「ちゃんと進んでるのを感じたい」→ 本人選択で 1 語＝1 マスのグリッド（WaniKani 風）。
+   緑＝完了・薄緑＝あと 1 回（学習ステップの途中）・黄＝要復習（最後が もう一度）・灰＝未。左から状態順に並べる。
+   バー（○✕）は QR の紙の回（PERIOD 以外）だけ */
 #progWrap{display:none;margin-top:8px}
 .bar{position:relative;height:8px;border-radius:4px;background:var(--line);overflow:hidden}
 .bar>div{position:absolute;top:0;bottom:0;width:0;transition:width .2s ease-out}
 #barOk{left:0;background:var(--ok)}
+#dots{display:none;gap:2px}
+#dots i{display:block;aspect-ratio:1;border-radius:2px;background:var(--line);transition:background .25s}
+#dots i.s3{background:var(--ok)}
+#dots i.s2{background:#97c459}
+#dots i.s1{background:#ef9f27}
+#nLn{color:#639922}#nAg{color:#b06f0a}
 #barNg{right:0;background:var(--ng)}
 .nums{display:flex;justify-content:space-between;margin-top:6px;font-size:14px;font-weight:600;font-variant-numeric:tabular-nums}
 #nOk{color:var(--ok)}#nNg{color:var(--ng)}
@@ -213,8 +223,9 @@ button.w.on .t{color:var(--ng)}
 <header>
  <div class="top"><button id="back">← 一覧</button><div id="title">単語チェック</div><div id="count"></div><button id="rec" aria-label="自分の記録">記録</button><button id="gear" aria-label="設定">設定</button></div>
  <div id="progWrap">
-  <div class="bar"><div id="barOk"></div><div id="barNg"></div></div>
-  <div class="nums"><span id="nOk">○ 0</span><span id="nNg">✕ 0</span></div>
+  <div class="bar" id="bar"><div id="barOk"></div><div id="barNg"></div></div>
+  <div id="dots"></div>
+  <div class="nums"><span id="nOk">○ 0</span><span id="nLn"></span><span id="nAg"></span><span id="nNg">✕ 0</span></div>
  </div>
 </header>
 <div id="msg">読み込み中…</div>
@@ -817,19 +828,47 @@ function begin(bk, kind, deck, round) {
   screen("swipe"); render();
 }
 function word() { return S.deck[S.idx[S.i]]; }
-// 語ごとに見て、○＝今日の分を抜けた語、✕＝まだ学習ステップの途中の語（PERIOD 以外は 1 周だけなので回答ごと）
+// 語ごとの状態（deck の番号 → 0 未・1 要復習・2 あと 1 回・3 完了）。
+// 完了＝今日の分を抜けた語、要復習＝ステップの途中で最後が もう一度、あと 1 回＝ステップの途中でそれ以外
+// （前の日から持ち越した学習中の語は、進んだ段があれば あと 1 回）。PERIOD 以外は 1 周だけなので ○＝3・✕＝1
+function wordStates() {
+  var st = [], last = {}, k;
+  for (k = 0; k < S.deck.length; k++) st[k] = 0;
+  for (var j = 0; j < S.i; j++) last[S.idx[j]] = PERIOD ? S.gr[j] : (S.res[j] ? 1 : 3);
+  for (k = 0; k < S.deck.length; k++) {
+    var L = PERIOD ? S.lst[k] : null;
+    if (!(k in last)) { if (L && L[1] > 0) st[k] = 2; continue; }
+    st[k] = !L ? (last[k] === 1 && !PERIOD ? 1 : 3) : last[k] === 1 ? 1 : 2;
+  }
+  return st;
+}
 function counts() {
-  var ok = 0, ng = 0, last = {};
-  for (var j = 0; j < S.i; j++) last[S.idx[j]] = PERIOD ? !!S.lst[S.idx[j]] : S.res[j];
-  Object.keys(last).forEach(function (k) { if (last[k]) ng++; else ok++; });
-  return [ok, ng];
+  var c = [0, 0, 0, 0];
+  wordStates().forEach(function (x) { c[x]++; });
+  return [c[3], c[1], c[2]];   // [完了, ✕／要復習, あと 1 回]
 }
 function progress() {
   var n = S.deck.length, c = counts();
   $("count").textContent = PERIOD ? c[0] + " / " + n + (S.i >= S.deck.length ? "　" + (S.idx.length - S.i) + " 語 残り" : "")
                                   : Math.min(S.i + 1, n) + " / " + n;
-  $("barOk").style.width = (c[0] / n * 100) + "%"; $("barNg").style.width = (c[1] / n * 100) + "%";
-  $("nOk").textContent = "○ " + c[0]; $("nNg").textContent = "✕ " + c[1];
+  $("bar").style.display = PERIOD ? "none" : ""; $("dots").style.display = PERIOD ? "grid" : "none";
+  if (!PERIOD) {
+    $("barOk").style.width = (c[0] / n * 100) + "%"; $("barNg").style.width = (c[1] / n * 100) + "%";
+    $("nOk").textContent = "○ " + c[0]; $("nNg").textContent = "✕ " + c[1]; $("nLn").textContent = $("nAg").textContent = "";
+    return;
+  }
+  // マスは状態の順（完了→あと 1 回→要復習→未）に左から詰める。語数が多いときは 1 行を増やして細かくする
+  var box = $("dots"), cols = n <= 100 ? 25 : n <= 300 ? 40 : 60;
+  if (box.children.length !== n) {
+    box.innerHTML = ""; box.style.gridTemplateColumns = "repeat(" + Math.min(cols, n) + ",1fr)";
+    for (var k = 0; k < n; k++) box.appendChild(document.createElement("i"));
+  }
+  var order = [c[0], c[2], c[1]], k2 = 0;
+  [3, 2, 1].forEach(function (cls, m) { for (var q = 0; q < order[m]; q++) box.children[k2++].className = "s" + cls; });
+  for (; k2 < n; k2++) box.children[k2].className = "";
+  $("nOk").textContent = "完了 " + c[0]; $("nLn").textContent = "あと1回 " + c[2];
+  $("nAg").textContent = c[1] ? "要復習 " + c[1] : ""; $("nNg").textContent = "未 " + (n - c[0] - c[1] - c[2]);
+  $("nNg").style.color = "var(--sub)";
 }
 function setButtons() {
   $("bng").disabled = $("bok").disabled = !S.flipped; $("bundo").disabled = S.i <= S.sentN;
