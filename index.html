@@ -842,6 +842,7 @@ function wordStates() {
   }
   return st;
 }
+var DOT_MAX = 100;   // 進み具合のマスの最大数（25×4）
 function counts() {
   var c = [0, 0, 0, 0];
   wordStates().forEach(function (x) { c[x]++; });
@@ -857,15 +858,19 @@ function progress() {
     $("nOk").textContent = "○ " + c[0]; $("nNg").textContent = "✕ " + c[1]; $("nLn").textContent = $("nAg").textContent = "";
     return;
   }
-  // マスは状態の順（完了→あと 1 回→要復習→未）に左から詰める。語数が多いときは 1 行を増やして細かくする
-  var box = $("dots"), cols = n <= 100 ? 25 : n <= 300 ? 40 : 60;
-  if (box.children.length !== n) {
-    box.innerHTML = ""; box.style.gridTemplateColumns = "repeat(" + Math.min(cols, n) + ",1fr)";
-    for (var k = 0; k < n; k++) box.appendChild(document.createElement("i"));
+  // マスは状態の順（完了→あと 1 回→要復習→未）に左から詰める。
+  // 本人指摘（2026-10-29）：語数が多いと細かくて見にくい → マスは最大 100（25×4）に固定し、100 語を超えたら 1 マス＝数語
+  var box = $("dots"), cells = Math.min(n, DOT_MAX);
+  if (box.children.length !== cells) {
+    box.innerHTML = ""; box.style.gridTemplateColumns = "repeat(" + Math.min(25, cells) + ",1fr)";
+    for (var k = 0; k < cells; k++) box.appendChild(document.createElement("i"));
   }
-  var order = [c[0], c[2], c[1]], k2 = 0;
-  [3, 2, 1].forEach(function (cls, m) { for (var q = 0; q < order[m]; q++) box.children[k2++].className = "s" + cls; });
-  for (; k2 < n; k2++) box.children[k2].className = "";
+  var seq = [], order = [c[0], c[2], c[1]];
+  [3, 2, 1].forEach(function (cls, m) { for (var q = 0; q < order[m]; q++) seq.push(cls); });
+  for (var k2 = 0; k2 < cells; k2++) {
+    var x = seq[Math.floor((k2 + 0.5) * n / cells)];   // そのマスが受け持つ語の真ん中の状態
+    box.children[k2].className = x ? "s" + x : "";
+  }
   $("nOk").textContent = "完了 " + c[0]; $("nLn").textContent = "あと1回 " + c[2];
   $("nAg").textContent = c[1] ? "要復習 " + c[1] : ""; $("nNg").textContent = "未 " + (n - c[0] - c[1] - c[2]);
   $("nNg").style.color = "var(--sub)";
