@@ -30,6 +30,13 @@ function wcPhase(handout, test, today) {
   var left = intro - wcDays(handout, today) + 1;                           // 渡した日の翌日が 1 日目
   return left >= 1 ? { kind: "intro", left: left, intro: intro } : { kind: "review", left: 0 };
 }
+// 単語帳ごとの期間の位置。eve（2026-10-29 藤岡の英）：テストの前日も新しい語を足すふつうの日。新しい語なしはテストの日だけ
+function wcBookPhase(bk, handout, test, today) {
+  var ph = wcPhase(handout, test, today);
+  return bk.eve && bk.daily && ph.kind === "final" && ph.lap === "test" && wcDays(today, test) === 1 ? { kind: "review", left: 0 } : ph;
+}
+// 新しい語を足す最後の日がテストの何日前か（ふつうは前々日＝2、eve は前日＝1）
+function wcLastAdd(bk) { return bk.eve ? 1 : 2; }
 // 今日出す新しい語の数（final では使わない）。total＝範囲の語数
 // 本人決定（2026-10-10）：やり残しは翌日に積む。今日までに出し終える数（範囲×経過日数÷新しい語を出す日数）からやった語を引く
 // （前の版は 残り÷残り日数 で、やり残しが後ろの日に薄く散っていた）
@@ -75,7 +82,7 @@ function restLabel(rest) {
 }
 // 新しい語を足す日か：渡した日の翌日〜テストの前々日、休みの曜日・日付を除く
 function wcAddDay(bk, handout, test, day) {
-  return day > handout && wcDays(day, test) >= 2 && !wcRest(bk, day);
+  return day > handout && wcDays(day, test) >= wcLastAdd(bk) && !wcRest(bk, day);
 }
 // 渡した日の翌日〜day（含む）のうち新しい語を足す日の数。day を省くとテストの前々日まで（期間全体）
 function wcNewDays(bk, handout, test, day) {
@@ -96,7 +103,7 @@ function wcDailyGoal(bk, handout, test, day, tn) {
 // carry（2026-10-24 渡辺）：休みの日も積み残し（前の範囲のやっていない語・もう出した日の分のやり残し）は出す。新しく足すのは休みの日以外だけ
 //   （前の版は休みの日に何も出さず、金曜の約 400 語が土曜に消えて見えた）
 function wcDailyRows(bk, fsrs, handout, today, test) {
-  if (today <= handout || wcDays(today, test) <= 1) return [];           // テストの日・前日は新しい語を足さない
+  if (today <= handout || wcDays(today, test) < wcLastAdd(bk)) return [];   // テストの日・前日は新しい語を足さない（eve は前日も足す）
   if (wcRest(bk, today) && !bk.carry) return [];
   var t = bk.t || bk.rows, inT = {}, seenT = 0;
   t.forEach(function (r) { inT[r] = 1; if (fsrs[r]) seenT++; });
@@ -109,9 +116,9 @@ function wcDailyRows(bk, fsrs, handout, today, test) {
 function wcRevDone(snap, b, today) { return snap.rev && snap.day === today ? (snap.rev[b] || 0) : 0; }
 function wcLeft(snap, today) {
   today = today || wcToday();
-  var fsrs = snap.fsrs || {}, out = [], phase = wcPhase(snap.handout, snap.test, today);
+  var fsrs = snap.fsrs || {}, out = [];
   (snap.books || []).forEach(function (bk) {
-    var n, inFin = null;
+    var n, inFin = null, phase = wcBookPhase(bk, snap.handout, snap.test, today);
     if (phase.kind === "final") {                // 2026-10-25〜 毎日足す単語帳も前日・テストの日は 1 周（新しい語は足さない）
       var fin = wcFinalRows(wcLapBook(bk, phase.lap), fsrs, today);
       inFin = {};

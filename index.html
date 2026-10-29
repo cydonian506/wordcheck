@@ -475,13 +475,13 @@ function todayPlan(bk) {
   // 期間データを作り直して範囲が変わったら、前の範囲で決めた今日の分は作り直す（2026-09-17 藤岡）
   if (pl && pl.rows.some(function (r) { return !inRange[r]; })) pl = null;
   // 毎日足す単語帳は、足し方（語数・休みの曜日）が変わったら決め直す（2026-09-19 渡辺）
-  var sig = bk.daily ? bk.daily + "/" + (bk.rest || []).join(",") + (bk.carry ? "/carry" : "") : undefined;   // carry を付けたら決め直す（2026-10-24）
+  var sig = bk.daily ? bk.daily + "/" + (bk.rest || []).join(",") + (bk.carry ? "/carry" : "") + (bk.eve ? "/eve" : "") : undefined;   // carry を付けたら決め直す（2026-10-24）
   if (pl && pl.sig !== sig) pl = null;
   if (!pl) {
     var all = fsrsAll(), ph = phaseToday(), unseen = bk.words.filter(function (w) { return !all[w[5]]; }).map(function (w) { return w[5]; });
     // 毎日 daily 語ずつの単語帳は番号順に今日の分を決める（出す順番はランダム）
     pl = { rows: bk.daily && P.handout
-      ? shuffle(wcDailyRows({ rows: bk.words.map(function (w) { return w[5]; }), t: testRows(bk), daily: bk.daily, rest: bk.rest, carry: bk.carry }, all, P.handout, todayIso(), P.test))
+      ? shuffle(wcDailyRows({ rows: bk.words.map(function (w) { return w[5]; }), t: testRows(bk), daily: bk.daily, rest: bk.rest, carry: bk.carry, eve: bk.eve }, all, P.handout, todayIso(), P.test))
       : ph.kind === "final" ? [] : shuffle(unseen).slice(0, wcFreshCount(unseen.length, ph, bk.words.length)) };
     if (sig) pl.sig = sig;
     store(key, pl);
@@ -501,7 +501,7 @@ function splitDeck(bk) {
   return out;
 }
 function baseDeck(bk) {
-  var ph = phaseToday();
+  var ph = wcBookPhase(bk, P.handout, P.test, todayIso());   // eve の単語帳はテストの前日もふつうの日（2026-10-29 藤岡）
   if (ph.kind !== "final") return dueCards(bk.b).concat(newToday(bk));
   // テストの前日はテスト範囲、テストの日（渡した日）は今日のテストの範囲（前週）を 1 周。新しい語は足さない（2026-10-25）
   var fin = wcFinalRows(wcLapBook({ rows: bk.words.map(function (w) { return w[5]; }), t: testRows(bk) }, ph.lap), fsrsAll(), todayIso()), inFin = {};
@@ -1170,7 +1170,7 @@ function saveState() {
   var pend = Object.keys(pendAll());
   var rv = {}; P.books.forEach(function (bk) { rv[bk.b] = revDone(bk.b); });
   var snap = { pend: pend, handout: P.handout, test: P.test, bookOf: BOOK, fsrs: fsrsAll(), plans: plans, url: location.href, rev: rv, day: todayIso(),
-               books: P.books.map(function (bk) { return { b: bk.b, label: bk.label, rows: bk.words.map(function (w) { return w[5]; }), t: testRows(bk), daily: bk.daily, rest: bk.rest, carry: bk.carry }; }) };
+               books: P.books.map(function (bk) { return { b: bk.b, label: bk.label, rows: bk.words.map(function (w) { return w[5]; }), t: testRows(bk), daily: bk.daily, rest: bk.rest, carry: bk.carry, eve: bk.eve }; }) };
   caches.open("wc-state").then(function (c) {
     return c.put("state.json", new Response(JSON.stringify(snap), { headers: { "Content-Type": "application/json" } }));
   }).catch(function () {});

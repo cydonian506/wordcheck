@@ -351,7 +351,7 @@ function quotaOf(c, sessions, today) {
   var books = cur.books.map(function (bk) {
     var rows = bk.words.map(function (w) { return String(w[0]); }), tn = bk.tn != null ? bk.tn : rows.length;
     rows.forEach(function (r) { bookOf[r] = bk.b; });
-    return { b: bk.b, label: bk.label, rows: rows, t: rows.slice(rows.length - tn), daily: bk.daily, rest: bk.rest, carry: bk.carry };
+    return { b: bk.b, label: bk.label, rows: rows, t: rows.slice(rows.length - tn), daily: bk.daily, rest: bk.rest, carry: bk.carry, eve: bk.eve };
   });
   var left = wcLeft({ handout: cur.handout, test: cur.test, books: books, bookOf: bookOf, fsrs: fsrs, plans: {}, pend: [] }, today);
   var done = {};
@@ -674,7 +674,7 @@ function bookBlock(bk, p, W, st, last, first, firsts, recs, today, q) {
   var inR = {}; rows.forEach(function (r) { inR[r] = 1; });
   node.appendChild(el("h3", null, bk.label));
   node.appendChild(el("div", "rng", bk.range + "・渡した日 " + md(p.handout)));
-  var ph = wcPhase(p.handout, p.test, today);
+  var ph = wcBookPhase(bk, p.handout, p.test, today);
   var hw = Math.max(1, days(p.handout, p.test) - 1), intro = Math.max(1, Math.min(hw - 1, Math.ceil(hw * WC_INTRO_RATIO)));   // left.js と同じ
   var n = rows.length, seen = rows.filter(function (r) { return first[r]; }).length;
   var seenY = rows.filter(function (r) { return first[r] && first[r] < today; }).length;
@@ -712,7 +712,7 @@ function bookBlock(bk, p, W, st, last, first, firsts, recs, today, q) {
   tb.appendChild(hr);
   for (var d = p.handout; d < p.test; d = addDays(d, 1)) {
     var a = ans[d] || 0, cls = d === today ? "today" : d > today ? "future" : (d > p.handout && !a ? "miss" : "");
-    var ph = wcPhase(p.handout, p.test, d);
+    var ph = wcBookPhase(bk, p.handout, p.test, d);
     var tr = el("tr", cls), tag = ph.kind === "final" ? "総" : bk.daily ? (wcAddDay(bk, p.handout, p.test, d) ? "新" : "復") : { intro: "新", review: "復" }[ph.kind];
     [md(d).replace("（", "(").replace("）", ")"), tag, fst[d] || "", fst[d] ? fst[d] - (nw[d] || 0) : "", nw[d] || "", fst[d] ? pct(oks[d] / fst[d]) : "—"].forEach(function (v, i) {
       tr.appendChild(el("td", i === 1 ? "tag" : null, String(v)));
