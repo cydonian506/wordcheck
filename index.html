@@ -501,6 +501,8 @@ function baseDeck(bk) {
   return shuffle(fin.filter(function (r) { return INDEX[r]; }).map(function (r) { return INDEX[r]; }))
     .concat(dueCards(bk.b, WC_FINAL_REVIEW_MAX + fin.length).filter(function (e) { return !inFin[e[5]]; }).slice(0, Math.max(0, WC_FINAL_REVIEW_MAX - revDone(bk.b))));
 }
+// テスト範囲の練習（本人指示 2026-10-29）：今週のテスト範囲を全部。学習履歴（FSRS・学習ステップ・今日の数・記録の送信）には一切残さない
+function testDeck(bk) { return shuffle(testRows(bk).filter(function (r) { return INDEX[r]; }).map(function (r) { return INDEX[r]; })); }
 function learned(bk) { var all = fsrsAll(); return bk.words.filter(function (w) { return all[w[5]]; }).length; }
 
 // ================================================================ 一覧
@@ -546,6 +548,12 @@ function hub() {
       sub.appendChild(b);
     });
     card.appendChild(sub);
+    var tn = testRows(bk).filter(function (r) { return INDEX[r]; }).length;
+    if (tn) {
+      var tb = el("button", "more", "テスト範囲を練習　" + tn + " 語（記録なし）");
+      tb.onclick = function () { begin(bk, "practice", testDeck(bk), 1); };
+      card.appendChild(tb);
+    }
     // 本人指示（2026-10-29）：「もっとやる」「テスト範囲だけやる」はやめた。使っていたのは越智だけで、
     // 新しい語が出ない不具合の回避だった。テスト範囲はテストの前日に今日の分で 1 周する
     box.appendChild(card);
@@ -818,13 +826,14 @@ function begin(bk, kind, deck, round) {
         ng: ngMap(),                                       // 例文を出すかの判定に使う（回の途中では増やさない）
         test: testSet(bk),                                 // 今週のテスト範囲の語（生徒要望 2026-09-26：カードに「テスト範囲」と出す）
         started: Date.now(), id: rid(), sent: false, sentN: 0, part: 0, pp: [], shownAt: 0, flipAt: 0, flipped: false,
-        gr: [], lst: {}, at: {}, pl: [], pu: [], timer: null };   // at：デッキの番号 → 最後に答えたのは何枚目か      // lst：デッキの番号 → 学習ステップの状態 [次に出す時刻, ステップ, 再学習]（学習中の語だけ）
+        gr: [], lst: {}, at: {}, pl: [], pu: [], timer: null,
+        practice: kind === "practice" };   // at：デッキの番号 → 最後に答えたのは何枚目か      // lst：デッキの番号 → 学習ステップの状態 [次に出す時刻, ステップ, 再学習]（学習中の語だけ）
   // 前の回で学習中のまま終わった語は、その続きから（出す時刻も守る。ほかに出す語が無ければ待たずに出す）
-  if (PERIOD) { var pd = pendAll(); deck.forEach(function (w, k) { if (pd[w[5]]) S.lst[k] = pendState(pd[w[5]]); }); }
+  if (PERIOD && !S.practice) { var pd = pendAll(); deck.forEach(function (w, k) { if (pd[w[5]]) S.lst[k] = pendState(pd[w[5]]); }); }
   $("swipe").classList.toggle("anki", !!PERIOD);
   $("keys").textContent = PERIOD ? "キーボード：Space めくる　1 もう一度　3 正解　Z 戻す" : "キーボード：Space めくる　← 誤答　→ 正答　Z 戻す";
   $("hintL").textContent = PERIOD ? "← もう一度" : "← 誤答"; $("hintR").textContent = PERIOD ? "正解 →" : "正答 →";
-  var names = { today: "本日分", more: "追加", miss: "誤答のみ", again: "再周回", weak: "苦手語", test: "テスト範囲", "new": "本日分・新規", review: "本日分・復習" };
+  var names = { today: "本日分", more: "追加", miss: "誤答のみ", again: "再周回", weak: "苦手語", test: "テスト範囲", practice: "テスト範囲・練習", "new": "本日分・新規", review: "本日分・復習" };
   $("title").textContent = (bk.label || "") + "　" + names[kind] + (round > 1 ? "　" + round + "周目" : "");
   screen("swipe"); render();
 }
@@ -1010,13 +1019,14 @@ function decide(g, dir) {
   if (busy || !S.flipped || S.i >= S.idx.length) return; busy = true;
   var now = Date.now(), w = word(), v = S.idx[S.i], cur = fsrsAll()[w[5]];
   S.res[S.i] = g === 1; S.gr[S.i] = g; S.times[S.i] = [S.flipAt ? S.flipAt - S.shownAt : 0, now - S.shownAt];
-  S.fs[S.i] = PERIOD ? fsrsRate(w[5], g) : null;
+  S.fs[S.i] = PERIOD && !S.practice ? fsrsRate(w[5], g) : null;
   if (PERIOD) {
-    cntAdd(S.book.b, 1);                                                // 戻すときのために前の「残り」と学習の状態を覚える
+    if (!S.practice) cntAdd(S.book.b, 1);                               // 戻すときのために前の「残り」と学習の状態を覚える
     S.pp[S.i] = pendAll()[w[5]] || 0; S.pl[S.i] = S.lst[v];
-    var nx = stepNext(S.lst[v] || null, g, !!cur, now);
+    // 練習は 正解 1 回で抜け、もう一度 は 10 枚あけてもう一度（時刻は待たない）
+    var nx = S.practice ? (g === 1 ? [now, 0, 1] : null) : stepNext(S.lst[v] || null, g, !!cur, now);
     S.at[v] = S.i;
-    setPend(w[5], nx || 0);
+    if (!S.practice) setPend(w[5], nx || 0);
     S.pu[S.i] = !!nx;
     if (nx) { S.lst[v] = nx; S.idx.push(v); }                          // 学習中：後ろに入れ直す（出す順は pickNext が時刻で決める）
     else delete S.lst[v];
@@ -1052,13 +1062,13 @@ $("bundo").onclick = function () {
     S.i--; fsrsUndo(S.fs[S.i]);
     if (PERIOD) {
       var w = word(), v = S.idx[S.i];
-      cntAdd(S.book.b, -1);
+      if (!S.practice) cntAdd(S.book.b, -1);
       if (S.pu[S.i]) {                                   // 入れ直した分を取り消す
         var j = S.idx.indexOf(v, S.i + 1);
         if (j > 0) S.idx.splice(j, 1);
       }
       if (S.pl[S.i] === undefined) delete S.lst[v]; else S.lst[v] = S.pl[S.i];
-      setPend(w[5], S.pp[S.i]);
+      if (!S.practice) setPend(w[5], S.pp[S.i]);
     }
     S.res.length = S.gr.length = S.fs.length = S.times.length = S.i; S.undo++; render();
   }
@@ -1110,9 +1120,9 @@ function finish() {
 function refreshAgain() { var m = missIdx(); $("againMiss").style.display = "none"; $("againMiss").textContent = "誤答のみ再周回（" + m.length + " 語）"; }
 $("againMiss").onclick = function () {
   var s = S, m = missIdx().map(function (wi) { return s.deck[wi]; }); commit();
-  begin(s.book, "miss", m, s.round + 1);
+  begin(s.book, s.practice ? "practice" : "miss", m, s.round + 1);
 };
-$("againAll").onclick = function () { var s = S; commit(); begin(s.book, "again", shuffle(s.deck.slice()), s.round + 1); };
+$("againAll").onclick = function () { var s = S; commit(); begin(s.book, s.practice ? "practice" : "again", shuffle(s.deck.slice()), s.round + 1); };
 $("toHub").onclick = function () { commit(); if (PERIOD) hub(); else show("送信完了"); };
 
 // ================================================================ ホーム画面・毎日の通知
@@ -1233,6 +1243,7 @@ function flush() {
 }
 function commit() {
   if (!S || S.sent) return;
+  if (S.practice) { if (S.i >= S.idx.length) S.sent = true; return; }   // 練習は送らない・端末にも残さない
   var body;
   if (PERIOD) {
     if (S.i <= S.sentN) { if (S.i >= S.idx.length) S.sent = true; return; }
