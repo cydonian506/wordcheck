@@ -55,8 +55,8 @@ header{padding:calc(12px + env(safe-area-inset-top)) 18px 6px}
 .bar{position:relative;height:8px;border-radius:4px;background:var(--line);overflow:hidden}
 .bar>div{position:absolute;top:0;bottom:0;width:0;transition:width .2s ease-out}
 #barOk{left:0;background:var(--ok)}
-#dots{display:none;gap:2px}
-#dots i{display:block;aspect-ratio:1;border-radius:2px;background:var(--line);transition:background .25s}
+#dots{display:none;height:10px;border-radius:5px;overflow:hidden;background:var(--line)}
+#dots i{display:block;height:100%;width:0;transition:width .25s ease-out}
 #dots i.s3{background:var(--ok)}
 #dots i.s2{background:#97c459}
 #dots i.s1{background:#ef9f27}
@@ -212,6 +212,12 @@ table.days tr.today td:first-child{font-weight:700}
 #againMiss{background:var(--acc);border-color:var(--acc);color:#fff}
 .lead{font-size:13px;color:var(--sub);margin:0 0 8px}
 #list,#repList{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px}
+#list.plain{display:block}
+.pw{padding:10px 12px;border-bottom:1px solid var(--line)}
+.pw .ph{display:flex;align-items:baseline;gap:8px}
+.pw .n{font-size:12px;color:var(--sub);font-variant-numeric:tabular-nums}
+.pw .t{font-size:17px;font-weight:700;color:var(--ng)}
+.pw .m{margin-top:2px;font-size:14px;line-height:1.5}
 button.w{display:flex;flex-direction:column;align-items:flex-start;text-align:left;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:var(--card);min-height:50px;word-break:break-all}
 button.w .n{font-size:11px;color:var(--sub)}
 button.w .t{font-size:15px;font-weight:600;margin-top:1px}
@@ -840,19 +846,19 @@ function begin(bk, kind, deck, round) {
 function word() { return S.deck[S.idx[S.i]]; }
 // 語ごとの状態（deck の番号 → 0 未・1 要復習・2 あと 1 回・3 完了）。
 // 完了＝今日の分を抜けた語、要復習＝ステップの途中で最後が もう一度、あと 1 回＝ステップの途中でそれ以外
-// （前の日から持ち越した学習中の語は、進んだ段があれば あと 1 回）。PERIOD 以外は 1 周だけなので ○＝3・✕＝1
+// （前の日から持ち越した学習中の語は、進んだ段があれば あと 1 回）。1 周だけの回（紙の QR・練習）は ○＝3・✕＝1
+function simpleRound() { return !PERIOD || S.practice; }
 function wordStates() {
-  var st = [], last = {}, k;
+  var st = [], last = {}, k, simple = simpleRound();
   for (k = 0; k < S.deck.length; k++) st[k] = 0;
-  for (var j = 0; j < S.i; j++) last[S.idx[j]] = PERIOD ? S.gr[j] : (S.res[j] ? 1 : 3);
+  for (var j = 0; j < S.i; j++) last[S.idx[j]] = simple ? (S.res[j] ? 1 : 3) : S.gr[j];
   for (k = 0; k < S.deck.length; k++) {
-    var L = PERIOD ? S.lst[k] : null;
+    var L = simple ? null : S.lst[k];
     if (!(k in last)) { if (L && L[1] > 0) st[k] = 2; continue; }
-    st[k] = !L ? (last[k] === 1 && !PERIOD ? 1 : 3) : last[k] === 1 ? 1 : 2;
+    st[k] = !L ? (last[k] === 1 && simple ? 1 : 3) : last[k] === 1 ? 1 : 2;
   }
   return st;
 }
-var DOT_MAX = 100;   // 進み具合のマスの最大数（25×4）
 function counts() {
   var c = [0, 0, 0, 0];
   wordStates().forEach(function (x) { c[x]++; });
@@ -860,27 +866,24 @@ function counts() {
 }
 function progress() {
   var n = S.deck.length, c = counts();
-  $("count").textContent = PERIOD ? c[0] + " / " + n + (S.i >= S.deck.length ? "　" + (S.idx.length - S.i) + " 語 残り" : "")
-                                  : Math.min(S.i + 1, n) + " / " + n;
-  $("bar").style.display = PERIOD ? "none" : ""; $("dots").style.display = PERIOD ? "grid" : "none";
-  if (!PERIOD) {
+  var simple = simpleRound();   // 練習（本人指示 2026-10-29）も 1 周だけなので、紙の QR と同じ ○✕ のバー
+  $("count").textContent = !simple ? c[0] + " / " + n + (S.i >= S.deck.length ? "　" + (S.idx.length - S.i) + " 語 残り" : "")
+                                   : Math.min(S.i + 1, n) + " / " + n;
+  $("bar").style.display = simple ? "" : "none"; $("dots").style.display = simple ? "none" : "flex";
+  if (simple) {
     $("barOk").style.width = (c[0] / n * 100) + "%"; $("barNg").style.width = (c[1] / n * 100) + "%";
     $("nOk").textContent = "○ " + c[0]; $("nNg").textContent = "✕ " + c[1]; $("nLn").textContent = $("nAg").textContent = "";
+    $("nNg").style.color = "";
     return;
   }
-  // マスは状態の順（完了→あと 1 回→要復習→未）に左から詰める。
-  // 本人指摘（2026-10-29）：語数が多いと細かくて見にくい → マスは最大 100（25×4）に固定し、100 語を超えたら 1 マス＝数語
-  var box = $("dots"), cells = Math.min(n, DOT_MAX);
-  if (box.children.length !== cells) {
-    box.innerHTML = ""; box.style.gridTemplateColumns = "repeat(" + Math.min(25, cells) + ",1fr)";
-    for (var k = 0; k < cells; k++) box.appendChild(document.createElement("i"));
+  // 状態の順（完了→あと 1 回→要復習→未）に左から積んだ 1 本のバー。長さは語数の割合どおり。
+  // 本人指摘（2026-10-29）：1 語 1 マスのグリッドは語数が多いと細かく、100 マスにまとめると色がずれる → 連続したバーに
+  var box = $("dots");
+  if (box.children.length !== 3) {
+    box.innerHTML = "";
+    ["s3", "s2", "s1"].forEach(function (c2) { box.appendChild(el("i", c2)); });
   }
-  var seq = [], order = [c[0], c[2], c[1]];
-  [3, 2, 1].forEach(function (cls, m) { for (var q = 0; q < order[m]; q++) seq.push(cls); });
-  for (var k2 = 0; k2 < cells; k2++) {
-    var x = seq[Math.floor((k2 + 0.5) * n / cells)];   // そのマスが受け持つ語の真ん中の状態
-    box.children[k2].className = x ? "s" + x : "";
-  }
+  [c[0], c[2], c[1]].forEach(function (x, m) { box.children[m].style.width = (n ? x / n * 100 : 0) + "%"; });
   $("nOk").textContent = "完了 " + c[0]; $("nLn").textContent = "あと1回 " + c[2];
   $("nAg").textContent = c[1] ? "要復習 " + c[1] : ""; $("nNg").textContent = "未 " + (n - c[0] - c[1] - c[2]);
   $("nNg").style.color = "var(--sub)";
@@ -1024,7 +1027,8 @@ function decide(g, dir) {
     if (!S.practice) cntAdd(S.book.b, 1);                               // 戻すときのために前の「残り」と学習の状態を覚える
     S.pp[S.i] = pendAll()[w[5]] || 0; S.pl[S.i] = S.lst[v];
     // 練習は 正解 1 回で抜け、もう一度 は 10 枚あけてもう一度（時刻は待たない）
-    var nx = S.practice ? (g === 1 ? [now, 0, 1] : null) : stepNext(S.lst[v] || null, g, !!cur, now);
+    // 練習は 1 周するだけ（本人指示 2026-10-29）。もう一度 でも入れ直さない
+    var nx = S.practice ? null : stepNext(S.lst[v] || null, g, !!cur, now);
     S.at[v] = S.i;
     if (!S.practice) setPend(w[5], nx || 0);
     S.pu[S.i] = !!nx;
@@ -1079,7 +1083,7 @@ function missIdx() { return S.idx.filter(function (x, k) { return S.res[k]; }); 
 // 1 回目で ○ だった語の数（PERIOD）。それ以外は 1 周の ○ の数
 function firstRes() { var seen = {}, out = []; S.idx.forEach(function (wi, k) { if (!(wi in seen) && k < S.res.length) { seen[wi] = 1; out.push([wi, k]); } }); return out; }
 function showScore() {
-  if (PERIOD) {
+  if (PERIOD && !S.practice) {
     var fr = firstRes(), ok1 = fr.filter(function (x) { return !S.res[x[1]]; }).length;
     $("score").textContent = "○ " + ok1; $("outof").textContent = "/ " + S.deck.length;
     $("resSub").textContent = ok1 === S.deck.length ? "全問 初回正答" : "初回正答数。もう一度 の " + (S.deck.length - ok1) + " 語も再学習完了";
@@ -1092,6 +1096,23 @@ function showScore() {
 function finish() {
   screen("review"); $("count").textContent = "結果"; showScore(); refreshAgain();
   $("againAll").style.display = PERIOD ? "block" : "none";
+  if (S.practice) {
+    // 練習（本人指示 2026-10-29）：1 周したら、間違えた語だけを意味つきで並べる
+    var miss = missIdx();
+    $("againMiss").style.display = miss.length ? "block" : "none";
+    $("toHub").textContent = "一覧へ";
+    $("listLead").textContent = miss.length ? "誤答 " + miss.length + " 語（意味つき）" : "全問正答。誤答なし";
+    var pl = $("list"); pl.innerHTML = ""; pl.className = "plain";
+    miss.forEach(function (wi) {
+      var w = S.deck[wi], b = el("div", "pw");
+      var h = el("div", "ph"); h.appendChild(el("span", "n", "No." + (w[4] || w[0]))); h.appendChild(el("span", "t", w[1]));
+      b.appendChild(h);
+      if (w[2]) b.appendChild(el("div", "m", w[2].split("／").join("、")));
+      pl.appendChild(b);
+    });
+    return;
+  }
+  $("list").className = "";
   $("toHub").textContent = PERIOD ? "一覧へ" : "送信して終了";
   $("listLead").textContent = PERIOD ? "赤＝初回で もう一度 にした語（学習ステップは通過済み）。誤操作は回の途中に ↶ で修正" : "赤＝誤答。誤操作はタップで修正";
   var list = $("list"); list.innerHTML = "";
