@@ -68,6 +68,20 @@ header{padding:calc(12px + env(safe-area-inset-top)) 18px 6px}
 .left .num small{font-size:15px;font-weight:600;color:var(--sub);margin-left:4px}
 .left .per{margin-top:2px;font-size:14px;color:var(--sub);font-variant-numeric:tabular-nums}
 .left.zero .num{color:var(--ok)}
+.left.goal{display:flex;gap:14px;align-items:center}
+.gWrap{position:relative;width:104px;height:104px;flex:none}
+.gWrap svg{position:absolute;inset:0;transform:rotate(-90deg)}
+.gWrap circle{fill:none;stroke-width:7}
+.gWrap .rb{stroke:var(--line)}
+.gWrap .rf{stroke:var(--ok);stroke-linecap:round;transition:stroke-dashoffset .5s ease-out}
+#mosaic{position:absolute;left:20px;top:20px;width:64px;height:64px;image-rendering:pixelated}
+.gTxt{flex:1;min-width:0}
+.flame{margin-top:6px;font-size:14px;font-weight:700;font-variant-numeric:tabular-nums}
+.flame .f{font-size:18px;margin-right:4px}
+.flame.off .f{filter:grayscale(1);opacity:.45}
+.scan{margin-top:2px;font-size:12px;color:var(--sub);font-variant-numeric:tabular-nums;letter-spacing:.02em}
+#dex{display:none;margin:-4px 0 12px;font-size:12px;color:var(--sub)}
+#dex span{font-size:18px;margin-left:2px}
 .left.sensei{padding:10px 14px}
 .left.sensei .num{font-size:22px}
 #gear,#rec{display:none;border:1px solid var(--line);background:var(--card);border-radius:8px;padding:5px 10px;font-size:14px}
@@ -207,7 +221,11 @@ button.w.on .t{color:var(--ng)}
 
 <div id="hub">
  <div class="hubHead"><div class="big" id="hubBig"></div><div class="small" id="hubSmall"></div></div>
- <div class="left" id="leftBox"><div class="lab">TODAY　本日の残り</div><div class="num" id="leftNum"></div><div class="per" id="leftPer"></div></div>
+ <div class="left goal" id="leftBox">
+  <div class="gWrap"><svg viewBox="0 0 100 100"><circle class="rb" cx="50" cy="50" r="44"/><circle class="rf" id="ringF" cx="50" cy="50" r="44"/></svg><canvas id="mosaic" width="64" height="64"></canvas></div>
+  <div class="gTxt"><div class="lab">TODAY　本日の残り</div><div class="num" id="leftNum"></div><div class="per" id="leftPer"></div><div class="flame" id="flame"></div><div class="scan" id="scan"></div></div>
+ </div>
+ <div id="dex"></div>
  <div class="left sensei" id="senseiBox" style="display:none"><div class="lab">INSTRUCTOR　講師の本日実績</div><div class="num" id="senseiNum"></div><div class="per" id="senseiPer"></div></div>
  <button id="hubNote"></button>
  <div id="books"></div>
@@ -526,7 +544,75 @@ function hub() {
   if (total) { $("leftNum").textContent = total; $("leftNum").appendChild(el("small", null, "語")); }
   else $("leftNum").textContent = "CLEAR";
   $("leftPer").textContent = total ? per.join("・") : "本日分 完了";
+  goalBox(total);
   saveState(); hubNote(); senseiBox();
+}
+// ================================================================ 日次ゴール・連続日数・モザイク（本人希望 2026-10-29「デュオリンゴみたいに」）
+// 期間ごとに謎の生き物（絵文字）が 1 体。最初はモザイクで、本日分を終えた日が増えるほど解像度が上がる。
+// テストの日に全部の日を終えていれば図鑑（端末だけ）に入る。キャラは後で差し替える前提で、まずは絵文字
+var CREATURES = "🐙🦑🦀🦞🦐🐡🐠🦈🐋🐊🦖🦕🐉🦎🐍🦂🕷️🦇🦉🦅🦚🦜🦩🐧🦔🦦🦥🦨🦡🐺🦊🦝🐯🦁🐆🦓🦒🦘🦬🐘🦏🦛🐪🦙🐫🦌🐗🐼🐨🦄🐲🐌🦋🐞🦗🪲🪼🦭🐿️🦫".match(/\p{Extended_Pictographic}\uFE0F?/gu);
+function creatureOf(handout) {
+  var h = 0, key = ME + handout;
+  for (var i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
+  return CREATURES[h % CREATURES.length];
+}
+// 記録のある日（連続日数用）。stats() と同じ数え方
+function activeDays() {
+  var H = mergedHist(), active = {};
+  Object.keys(H).forEach(function (r) { H[r].forEach(function (x) { active[x[0]] = 1; }); });
+  P.books.forEach(function (bk) { Object.keys(store("cnt:" + ME) || {}).concat(Object.keys(P.dayn || {})).forEach(function (d) { if (dayCount(d, bk.b)) active[d] = 1; }); });
+  return active;
+}
+function streakOf(active, today) {
+  var n = 0, d0 = new Date(today + "T00:00:00");
+  if (!active[today]) d0.setDate(d0.getDate() - 1);
+  while (active[iso(d0)]) { n++; d0.setDate(d0.getDate() - 1); }
+  return n;
+}
+function goalBox(left) {
+  var today = todayIso(), H = mergedHist(), done = 0;
+  Object.keys(H).forEach(function (r) { if (H[r].some(function (x) { return x[0] === today; })) done++; });
+  var frac = left ? done / (done + left) : 1;
+  var C = 2 * Math.PI * 44, rf = $("ringF");
+  rf.style.strokeDasharray = C; rf.style.strokeDashoffset = C * (1 - frac);
+  // 本日分を終えた日（端末に残す）。期間の日数のうち終えた日の割合でモザイクを解く。今日は進みぐあいのぶんだけ
+  var cl = store("clear:" + ME) || {};
+  if (!left && !cl[today]) { cl[today] = 1; store("clear:" + ME, cl); }
+  var span = Math.max(1, days(P.handout, P.test)), got = 0;
+  for (var i = 0; i < span; i++) {
+    var d = new Date(P.handout + "T00:00:00"); d.setDate(d.getDate() + i);
+    var k = iso(d);
+    if (k < today && cl[k]) got++;
+  }
+  var reveal = Math.min(1, (got + (today < P.test ? frac : 0)) / span);
+  var emo = creatureOf(P.handout);
+  drawMosaic(emo, reveal);
+  $("scan").textContent = reveal >= 1 ? "解析完了　" + emo : "解析 " + Math.floor(reveal * 100) + "%　残り " + Math.max(0, days(today, P.test)) + " 日";
+  var active = activeDays(), st = streakOf(active, today), fl = $("flame");
+  fl.innerHTML = ""; fl.className = "flame" + (left && !active[today] ? " off" : "");
+  fl.appendChild(el("span", "f", "🔥")); fl.appendChild(document.createTextNode(st + " 日連続"));
+  // 図鑑：テスト日以降に解析完了していれば入れる（期間ごとに 1 体）
+  var dex = store("dex:" + ME) || {};
+  if (reveal >= 1 && !dex[P.handout]) { dex[P.handout] = emo; store("dex:" + ME, dex); }
+  var got2 = Object.keys(dex).sort().map(function (k) { return dex[k]; });
+  $("dex").style.display = got2.length ? "" : "none";
+  $("dex").innerHTML = ""; $("dex").appendChild(document.createTextNode("COLLECTION " + got2.length));
+  got2.forEach(function (e) { $("dex").appendChild(el("span", null, e)); });
+}
+// 絵文字を n×n に縮めてから拡大（ぼかさない）。reveal 1 でくっきり
+function drawMosaic(emo, reveal) {
+  var cv = $("mosaic"), ctx = cv.getContext("2d"), S0 = 64;
+  var src = document.createElement("canvas"); src.width = src.height = S0;
+  var sx = src.getContext("2d");
+  sx.textAlign = "center"; sx.textBaseline = "middle"; sx.font = "52px sans-serif";
+  sx.fillText(emo, S0 / 2, S0 / 2 + 3);
+  ctx.clearRect(0, 0, S0, S0);
+  if (reveal >= 1) { ctx.drawImage(src, 0, 0); return; }
+  var n = Math.max(3, Math.round(3 + Math.pow(reveal, 3) * 13));   // 3×3 → 16×16。最終日まで正体が分かりにくいように
+  var tiny = document.createElement("canvas"); tiny.width = tiny.height = n;
+  tiny.getContext("2d").drawImage(src, 0, 0, n, n);
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(tiny, 0, 0, S0, S0);
 }
 // 先生の進み具合（本人指示 2026-10-29）。先生も同じアプリでやっている。数は通知サーバーが先生の記録から数える
 var SENSEI = "3f37ce", senseiAt = 0;
@@ -542,7 +628,7 @@ function senseiBox() {
     $("senseiNum").textContent = n; $("senseiNum").appendChild(el("small", null, "語"));
     var per = [];
     if (x.left && x.left.d === today) per.push(x.left.n ? "残り " + x.left.n + " 語" : "本日分 完了");
-    if (streak) per.push(streak + " 日連続");
+    if (streak) per.push("🔥 " + streak + " 日連続");
     per.push("直近 7 日 " + week + " 語");
     $("senseiPer").textContent = per.join("・");
     $("senseiBox").style.display = "";
@@ -641,13 +727,7 @@ function dayCount(day, b) {
 function stats() {
   screen("stats"); $("title").textContent = "自分の記録"; $("count").textContent = "";
   var box = $("stats"), today = todayIso(), H = mergedHist(), fa = fsrsAll(); box.innerHTML = "";
-  var active = {};
-  Object.keys(H).forEach(function (r) { H[r].forEach(function (x) { active[x[0]] = 1; }); });
-  P.books.forEach(function (bk) { Object.keys(store("cnt:" + ME) || {}).concat(Object.keys(P.dayn || {})).forEach(function (d) { if (dayCount(d, bk.b)) active[d] = 1; }); });
-  // 連続日数（今日まだなら昨日まで）
-  var streak = 0, d0 = new Date(today + "T00:00:00");
-  if (!active[today]) d0.setDate(d0.getDate() - 1);
-  while (active[iso(d0)]) { streak++; d0.setDate(d0.getDate() - 1); }
+  var active = activeDays(), streak = streakOf(active, today);   // 連続日数（今日まだなら昨日まで）
   var s1 = el("div", "sec"); s1.appendChild(el("h2", null, "連続"));
   var sn = el("div", "streak", String(streak)); sn.appendChild(el("small", null, "日")); s1.appendChild(sn);
   s1.appendChild(el("div", "sub", active[today] ? "本日 実施済み" : streak ? "本日実施で " + (streak + 1) + " 日" : "記録なし"));
