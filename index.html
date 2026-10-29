@@ -68,6 +68,8 @@ header{padding:calc(12px + env(safe-area-inset-top)) 18px 6px}
 .left .num small{font-size:15px;font-weight:600;color:var(--sub);margin-left:4px}
 .left .per{margin-top:2px;font-size:14px;color:var(--sub);font-variant-numeric:tabular-nums}
 .left.zero .num{color:var(--ok)}
+.left.sensei{padding:10px 14px}
+.left.sensei .num{font-size:22px}
 #gear,#rec{display:none;border:1px solid var(--line);background:var(--card);border-radius:8px;padding:5px 10px;font-size:14px}
 #hubNote{display:none;width:100%;margin:0 0 12px;border:1px dashed var(--line);border-radius:10px;padding:10px;font-size:14px;background:transparent;color:var(--sub);text-align:left}
 #settings{display:none;padding:8px 18px 40px}
@@ -206,6 +208,7 @@ button.w.on .t{color:var(--ng)}
 <div id="hub">
  <div class="hubHead"><div class="big" id="hubBig"></div><div class="small" id="hubSmall"></div></div>
  <div class="left" id="leftBox"><div class="lab">今日の残り</div><div class="num" id="leftNum"></div><div class="per" id="leftPer"></div></div>
+ <div class="left sensei" id="senseiBox" style="display:none"><div class="lab">先生も毎日やってる（今日）</div><div class="num" id="senseiNum"></div><div class="per" id="senseiPer"></div></div>
  <button id="hubNote"></button>
  <div id="books"></div>
  <button id="fbLink">おかしな所・不具合を先生に送る</button>
@@ -523,7 +526,27 @@ function hub() {
   if (total) { $("leftNum").textContent = total; $("leftNum").appendChild(el("small", null, "語")); }
   else $("leftNum").textContent = "終わり！";
   $("leftPer").textContent = total ? per.join("・") : "今日はここまで";
-  saveState(); hubNote();
+  saveState(); hubNote(); senseiBox();
+}
+// 先生の進み具合（本人指示 2026-10-29）。先生も同じアプリでやっている。数は通知サーバーが先生の記録から数える
+var SENSEI = "3f37ce", senseiAt = 0;
+function senseiBox() {
+  if (Date.now() - senseiAt < 300000) return;
+  senseiAt = Date.now();
+  post("/sensei", { c: ME }).then(function (r) { return r.json(); }).then(function (x) {
+    var days = x.days || {}, today = todayIso(), n = days[today] || 0;
+    var week = 0, streak = 0, i, d;
+    for (i = 0; i < 7; i++) week += days[wcDayOf(Date.now() - i * 86400000)] || 0;
+    for (i = n ? 0 : 1; i < 16; i++) { d = wcDayOf(Date.now() - i * 86400000); if (!days[d]) break; streak++; }
+    $("senseiNum").innerHTML = "";
+    $("senseiNum").textContent = n; $("senseiNum").appendChild(el("small", null, "語"));
+    var per = [];
+    if (x.left && x.left.d === today) per.push(x.left.n ? "残り " + x.left.n + " 語" : "今日の分は終わり");
+    if (streak) per.push(streak + " 日連続");
+    per.push("この 7 日で " + week + " 語");
+    $("senseiPer").textContent = per.join("・");
+    $("senseiBox").style.display = "";
+  }).catch(function () { senseiAt = 0; });
 }
 // 設定画面
 $("gear").onclick = function () { screen("settings"); $("title").textContent = "設定"; $("count").textContent = ""; notifyBox(); };
@@ -990,7 +1013,7 @@ function saveState() {
   }
   // 残りの数を通知サーバーへ（0 の日は通知しない。変わったときだけ送る）
   var sent = store("left:sent"), now = todayIso() + ":" + total;
-  if (store("push:on") && sent !== now) {
+  if ((store("push:on") || ME === SENSEI) && sent !== now) {   // 先生の残りは通知がオフでも送る（生徒の画面に出す）
     post("/left", { c: ME, d: todayIso(), n: total }).then(function () { store("left:sent", now); }).catch(function () {});
   }
 }
