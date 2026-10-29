@@ -159,6 +159,8 @@ table.days tr.today td:first-child{font-weight:700}
 .card .mng{left:18px;color:var(--ng)}.card .mok{right:18px;color:var(--ok)}
 .card .tag{position:absolute;top:14px;left:50%;transform:translateX(-50%);font-size:12px;color:var(--sub);display:flex;gap:6px;align-items:center;white-space:nowrap}
 .card .tag .test{color:var(--acc);border:1px solid var(--acc);border-radius:999px;padding:1px 8px;font-weight:600}
+.card .tag .first{color:var(--ok);border:1px solid var(--ok);border-radius:999px;padding:1px 8px;font-weight:600}
+.card .tag .rev{color:var(--sub);border:1px solid var(--line);border-radius:999px;padding:1px 8px;font-weight:600}
 .card .no{position:relative;font-size:13px;color:var(--sub)}
 .card .word{position:relative;font-size:clamp(28px,9vw,40px);font-weight:700;text-align:center;word-break:break-word;margin-top:6px;line-height:1.15}
 .card .say{position:relative;margin-top:10px;width:44px;height:44px;border-radius:50%;border:1px solid var(--line);background:var(--card);color:var(--acc);font-size:18px;display:flex;align-items:center;justify-content:center;touch-action:manipulation}
@@ -906,7 +908,11 @@ function render() {
   card.appendChild(el("div", "glow gng")); card.appendChild(el("div", "glow gok"));
   card.appendChild(el("div", "mark mng", "✕")); card.appendChild(el("div", "mark mok", "○"));
   var tags = [];
-  if (PERIOD && !fsrsAll()[w[5]]) tags.push(["first", "NEW"]);
+  // 本人指示（2026-10-29）：新規かどうかもテスト範囲と同じ形で出す。新規＝まだ覚えていない語か、今日はじめて出て学習ステップの途中の語
+  if (PERIOD) {
+    var Lv = S.lst[S.idx[S.i]], isNew = !fsrsAll()[w[5]] || (Lv && !Lv[2]);
+    tags.push(isNew ? ["first", "新規"] : ["rev", "復習"]);
+  }
   // 生徒要望（2026-09-26）：今週のテストに出る語はカードで分かるようにする（デッキは分けない）
   if (PERIOD && S.test && S.test[w[5]]) tags.push(["test", "テスト範囲"]);
   if (tags.length) {
