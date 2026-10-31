@@ -478,11 +478,13 @@ function todayPlan(bk) {
   var sig = bk.daily ? bk.daily + "/" + (bk.rest || []).join(",") + (bk.carry ? "/carry" : "") + (bk.eve ? "/eve" : "") : undefined;   // carry を付けたら決め直す（2026-10-24）
   if (pl && pl.sig !== sig) pl = null;
   if (!pl) {
-    var all = fsrsAll(), ph = phaseToday(), unseen = bk.words.filter(function (w) { return !all[w[5]]; }).map(function (w) { return w[5]; });
+    // 新しい語は番号順に選ぶ（本人指示 2026-10-31。前は範囲内からランダムに選んでいた）。出す順番はランダムのまま
+    var all = fsrsAll(), ph = phaseToday(), unseen = bk.words.filter(function (w) { return !all[w[5]]; })
+      .sort(function (a, b) { return a[4] - b[4]; }).map(function (w) { return w[5]; });
     // 毎日 daily 語ずつの単語帳は番号順に今日の分を決める（出す順番はランダム）
     pl = { rows: bk.daily && P.handout
       ? shuffle(wcDailyRows({ rows: bk.words.map(function (w) { return w[5]; }), t: testRows(bk), daily: bk.daily, rest: bk.rest, carry: bk.carry, eve: bk.eve }, all, P.handout, todayIso(), P.test))
-      : ph.kind === "final" ? [] : shuffle(unseen).slice(0, wcFreshCount(unseen.length, ph, bk.words.length)) };
+      : ph.kind === "final" ? [] : shuffle(unseen.slice(0, wcFreshCount(unseen.length, ph, bk.words.length))) };
     if (sig) pl.sig = sig;
     store(key, pl);
   }
