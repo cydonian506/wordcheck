@@ -272,10 +272,17 @@ function fbBox(today) {
   });
   return box;
 }
+// 2026-11-03〜 氏名と並びはデータ（暗号化）のほうを使う。新しい生徒も QR の読み直しなしで出る。古いデータならアドレスの n= のまま
+function useNames(list) {
+  if (!list || !list.length) return;
+  ORDER = []; NAMES = {};
+  list.forEach(function (x) { ORDER.push(x[0]); NAMES[x[0]] = x[1]; });
+  saveTeacher();   // 通知（sw.js）の氏名も新しい生徒に合わせる
+}
 function refresh() {
   $("meta").textContent = "読み込み中…";
   Promise.all([loadData(), loadRecs(), loadFbs()]).then(function (x) {
-    DATA = x[0]; FBS = x[2]; render(x[1]);
+    DATA = x[0]; FBS = x[2]; useNames(DATA.names); render(x[1]);
     $("meta").textContent = "更新 " + hm(Date.now()) + "・範囲のデータ " + DATA.made.replace("T", " ");
   }).catch(function (e) {
     $("meta").textContent = "";
