@@ -10,6 +10,8 @@
 //   規定量の無い単語帳は、範囲を足す日に均等に割る（2026-09-17〜の「前半で出し切る」は 2026-10-25 にやめた）
 // snapshot = { handout, test, books: [{b, label, rows, t, daily}], bookOf: {行番号: b},
 //              fsrs: {行番号: [安定度, 難易度, 最後の日]}, plans: {b: {date, rows}}, pend: [学習ステップの途中の行番号（前の日のぶんも）], url }
+// anki（2026-11-06 梅田のテスト用アカ）：テストの日程を見ない。毎日 daily 語の新しい語（番号順、休みの日を除く）＋期限の語だけ。
+//   前日・当日の 1 周も、やり残しの上乗せも無い（その日に決めた daily 語だけ。Anki と同じ）
 //   t はテスト範囲（次週）の行番号。古いデータで無ければ rows 全部を使う
 var WC_REVIEW_MAX = 100, WC_FINAL_REVIEW_MAX = 50, WC_INTRO_RATIO = 1;     // 前日は範囲の 1 周が主なので期限の語を絞る
 // 本人決定（2026-10-10）：1 日の切り替わりは朝 3 時（夜中の 0〜3 時は前の日のぶん）
@@ -32,11 +34,12 @@ function wcPhase(handout, test, today) {
 }
 // 単語帳ごとの期間の位置。eve（2026-10-29 藤岡の英）：テストの前日も新しい語を足すふつうの日。新しい語なしはテストの日だけ
 function wcBookPhase(bk, handout, test, today) {
+  if (bk.anki) return { kind: "review", left: 0 };
   var ph = wcPhase(handout, test, today);
   return bk.eve && bk.daily && ph.kind === "final" && ph.lap === "test" && wcDays(today, test) === 1 ? { kind: "review", left: 0 } : ph;
 }
 // 新しい語を足す最後の日がテストの何日前か（ふつうは前々日＝2、eve は前日＝1）
-function wcLastAdd(bk) { return bk.eve ? 1 : 2; }
+function wcLastAdd(bk) { return bk.anki ? 0 : bk.eve ? 1 : 2; }
 // 今日出す新しい語の数（final では使わない）。total＝範囲の語数
 // 本人決定（2026-10-10）：やり残しは翌日に積む。今日までに出し終える数（範囲×経過日数÷新しい語を出す日数）からやった語を引く
 // （前の版は 残り÷残り日数 で、やり残しが後ろの日に薄く散っていた）
@@ -82,6 +85,7 @@ function restLabel(rest) {
 }
 // 新しい語を足す日か：渡した日の翌日〜テストの前々日、休みの曜日・日付を除く
 function wcAddDay(bk, handout, test, day) {
+  if (bk.anki) return day >= handout && day < test && !wcRest(bk, day);   // anki：渡した日〜テストの前日（次の期間の渡した日の前日）
   return day > handout && wcDays(day, test) >= wcLastAdd(bk) && !wcRest(bk, day);
 }
 // 渡した日の翌日〜day（含む）のうち新しい語を足す日の数。day を省くとテストの前々日まで（期間全体）
@@ -103,6 +107,7 @@ function wcDailyGoal(bk, handout, test, day, tn) {
 // carry（2026-10-24 渡辺）：休みの日も積み残し（前の範囲のやっていない語・もう出した日の分のやり残し）は出す。新しく足すのは休みの日以外だけ
 //   （前の版は休みの日に何も出さず、金曜の約 400 語が土曜に消えて見えた）
 function wcDailyRows(bk, fsrs, handout, today, test) {
+  if (bk.anki) return wcRest(bk, today) ? [] : bk.rows.filter(function (r) { return !fsrs[r]; }).slice(0, bk.daily);   // 積み残し（先頭）から番号順に daily 語
   if (today <= handout || wcDays(today, test) < wcLastAdd(bk)) return [];   // テストの日・前日は新しい語を足さない（eve は前日も足す）
   if (wcRest(bk, today) && !bk.carry) return [];
   var t = bk.t || bk.rows, inT = {}, seenT = 0;
