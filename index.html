@@ -392,6 +392,20 @@ function fsrsSeed() {
     });
     store("hist:" + ME, h);
   }
+  // 本人指示（2026-11-21 奥苑）：単語帳ごとのリセット。since_rows＝[行番号の下限, 上限, 日付]。その範囲の語だけ、日付より前の記録を捨てる
+  if (P && P.since_rows && P.since_rows.length) {
+    var h2 = histAll();
+    P.since_rows.forEach(function (x) {
+      var hit = function (row) { var n = Number(row); return n >= x[0] && n <= x[1]; };
+      Object.keys(mine).forEach(function (row) { if (hit(row) && mine[row][2] < x[2]) delete mine[row]; });
+      Object.keys(h2).forEach(function (row) {
+        if (!hit(row)) return;
+        h2[row] = h2[row].filter(function (y) { return y[0] >= x[2]; });
+        if (!h2[row].length) delete h2[row];
+      });
+    });
+    store("hist:" + ME, h2);
+  }
   Object.keys(cards).forEach(function (row) {
     var c = cards[row], seed = [c[5], c[6], c[7]];
     if (!mine[row] || mine[row][2] <= seed[2]) mine[row] = seed;
